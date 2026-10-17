@@ -3,7 +3,7 @@ package config
 import (
 	"eqray-go-starter/app/facades"
 	"github.com/goravel/framework/contracts/route"
-	ginfacades "github.com/goravel/gin/facades"
+	ginFacades "github.com/goravel/gin/facades"
 )
 
 func init() {
@@ -16,7 +16,7 @@ func init() {
 				"body_limit":   4096,
 				"header_limit": 4096,
 				"route": func() (route.Route, error) {
-					return ginfacades.Route("gin"), nil
+					return ginFacades.Route("gin"), nil
 				},
 			},
 		},

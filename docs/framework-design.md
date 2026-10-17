@@ -2,7 +2,7 @@
 
 > 技术栈：Goravel 1.18 + Gin + MySQL 8.0
 > 表结构参考 **yudao（ruoyi-vue-pro）**，字段命名遵循 Goravel 约定。
-> 文档性质：架构与数据设计说明，不含实现代码。
+> 文档性质：架构与数据设计说明；除第 15 节（可直接复制的代码模板）外，其余章节不含实现代码。
 
 ---
 
@@ -42,8 +42,8 @@
 
 | 模块 | 定位 | 职责范围 | 依赖 |
 |---|---|---|---|
-| **base 基础模块** | 技术底座 | 统一响应封装、系统错误码与业务异常基础设施、通用中间件、认证组件（JWT 签发与校验、登录日志）、分页/查询请求基类、通用工具（树构建、雪花 ID、加解密、导出） | 无 |
-| **system 系统关联模块** | 后台管理与系统关联关系 | 系统用户（员工账号）、认证登录、部门、岗位、角色、菜单权限点、字典、通知公告、操作日志，以及各关联表 | base |
+| **base 基础模块** | 技术底座 | 统一响应封装、系统错误码与业务异常基础设施、通用中间件、认证组件（双令牌签发与校验、登录日志）、分页/查询请求基类、通用工具（树构建、雪花 ID、加解密、导出） | 无 |
+| **system 系统关联模块** | 后台管理与系统关联关系 | 系统用户（员工账号）、认证登录、角色、菜单权限点、字典、通知公告、操作日志，以及各关联表 | base |
 | **infra 基础设施模块** | 与业务无关的基础设施 | 参数配置、文件与文件配置、定时任务与任务日志、API 访问与错误日志 | base |
 | **member 会员模块** | 面向 C 端的会员体系 | 会员账号、注册与登录、会员资料、会员等级与等级记录、积分与积分记录、签到、标签、分组 | base |
 
@@ -64,7 +64,7 @@
 | 归属 | 表 |
 |---|---|
 | base 模块 | `auth_login_log` |
-| system 模块 | `system_users`、`system_dept`、`system_post`、`system_role`、`system_menu`、`system_user_role`、`system_role_menu`、`system_dict_type`、`system_dict_data`、`system_notice`、`system_operate_log` |
+| system 模块 | `system_users`、`system_role`、`system_menu`、`system_user_role`、`system_role_menu`、`system_dict_type`、`system_dict_data`、`system_notice`、`system_operate_log` |
 | infra 模块 | `infra_config`、`infra_file`、`infra_file_config`、`infra_job`、`infra_job_log`、`infra_api_access_log`、`infra_api_error_log` |
 | member 模块 | `member_user`、`member_level`、`member_level_record`、`member_point_record`、`member_sign_record`、`member_tag`、`member_tag_ref`、`member_group` |
 
@@ -82,17 +82,18 @@ app/
 ├── modules/
 │   ├── base/                      # 基础模块
 │   │   ├── types/                 # 通用类型：ID（雪花 int64，JSON 序列化为字符串）
-│   │   ├── model/                 # Model 基类：审计字段与自动填充 hook
+│   │   ├── model/                 # Model 基类：审计字段与 FillCreate / FillUpdate 填充
 │   │   ├── auth/                  # 认证组件（base 唯一持有表的组件）
 │   │   │   ├── model/             # auth_login_log
 │   │   │   ├── repository/
-│   │   │   └── service/           # JWT 签发与校验、登录日志写入
+│   │   │   └── service/           # 双令牌签发与校验、登录日志写入
 │   │   ├── enums/                 # 跨模块共用枚举（如 user_type）
 │   │   ├── errs/                  # 系统错误码定义 + 业务异常类型 + 请求上下文错误槽（Capture / Captured）
-│   │   ├── response/              # code/msg/data 响应封装（Success / Error / Page）
-│   │   ├── request/               # 通用请求基类（pageNo/pageSize 分页、排序、时间范围）
-│   │   ├── middleware/            # recovery / exception_handler（含错误槽）/ cors / request_log / jwt_auth / member_auth / permission
-│   │   └── support/               # 树构建、雪花ID（含时钟回拨处理）、加解密、导出
+│   │   ├── response/              # code/msg/data 响应封装（Success / Page / Fail）
+│   │   ├── param/                 # 通用请求参数：分页 Page、Bind / Validate / PathID
+│   │   ├── result/                # 响应输出助手（Success / Page / Fail）
+│   │   ├── middleware/            # recovery / exception_handler（含错误槽）/ cors / request_log / token_auth / member_auth / permission
+│   │   └── support/               # 树构建、雪花ID（节点号取 SNOWFLAKE_NODE_ID）、1062 判重、加解密、导出
 │   ├── system/                    # 系统关联模块
 │   │   ├── enums/ errs/ model/ repository/ service/ controller/ request/
 │   │   ├── middleware/            # operate_log（按路由元数据采集操作日志）
@@ -128,7 +129,7 @@ HTTP 请求
   → Controller  编排（取参 → 调 Service → 出响应），不含业务判断
   → Service     业务逻辑、事务边界、跨模块调用
   → Repository  数据访问，只操作本模块表，返回 Model 或分页结果
-  → Model       表映射与关联定义
+  → Model       表映射（字段、表名、db tag）
 ```
 
 ### 5.2 各层约束
@@ -138,7 +139,7 @@ HTTP 请求
 | Controller | 调用 Request 校验、调用 Service、返回统一响应 | 直接访问 Repository、写业务分支、开事务 |
 | Service | 业务规则、事务、调用其他模块 Service、写日志 | 直接操作 `http.Context`、拼接 SQL |
 | Repository | 单表/多表查询、条件构建、返回结构体 | 业务判断、返回 HTTP 结构、开事务 |
-| Model | 字段、表名、关联（hasMany/belongsTo 等） | 写查询逻辑 |
+| Model | 字段与 `db` tag、表名（`TableName()`）、`FillCreate` / `FillUpdate` | 写查询逻辑、声明 ORM 关联 |
 
 事务只允许在 Service 层开启，Repository 内不出现事务代码。
 
@@ -151,15 +152,18 @@ HTTP 请求
 | 粒度 | 每个实体一个 Repository，放在模块的 `repository/` 下 |
 | 方法命名 | 按业务查询语义命名，如 `FindByUsername`、`PageWithDataScope`、`ListByRoleIDs` |
 | 职责 | 承载多表关联、动态条件组装、分页查询；`First by id` 这类裸查询不必单独成方法 |
-| 横切条件 | 软删除、数据权限（`system_role.data_scope` + 部门树）等条件在 Repository 入口统一注入，不散落到 Service |
+| 表名 | 引用 Model 导出的 `XxxTable` 常量，不在 Repository 里重复写表名字面量 |
+| 唯一键 | 写入捕获 1062（`support.IsDuplicate`），转成与该字段「已存在」相同的业务错误码（6.8(5)） |
+| 分页 | 只处理 1 ~ 200 的入参（校验在 Controller）；软删除用 `RowsAffected` 判定未命中 |
+| 横切条件 | 软删除等条件在 Repository 入口统一注入，不散落到 Service |
 | 事务 | 自身不开事务，由 Service 控制并向下传递 |
 | 返回 | 返回 Model 或分页结果，不返回 HTTP 结构、不返回 Request / Response 对象 |
 | 接口 | 不为每个 Repository 预抽 interface；仅当 Service 测试需要 mock 时，由使用方就近定义小接口 |
 | 跨模块 | 禁止被其他模块 import（见第 10 节） |
 
-反模式：为一个查询形态固定不变的实体，写一整套 `FindByXxx` 的逐字段 getter。方法应对应**真实的业务查询**，而不是把 ORM 已有的能力再枚举一遍。
+反模式：为一个查询形态固定不变的实体，写一整套 `FindByXxx` 的逐字段 getter。方法应对应**真实的业务查询**，而不是把查询构造器已有的能力再枚举一遍。
 
-> 判断标准很简单：如果这个方法的方法体只有一行、且只是把入参原样传给 ORM，那它不该存在——除非它是为了承载数据权限注入等横切逻辑。
+> 判断标准很简单：如果这个方法的方法体只有一行、且只是把入参原样传给查询构造器，那它不该存在——除非它是为了承载数据权限注入等横切逻辑。
 
 ---
 
@@ -183,11 +187,11 @@ HTTP 请求
 - 除特别说明外，**所有表**（含关联表与日志表）都带上述 5 个审计字段，与 yudao 一致。
 - `status` 取值 `1` 启用 / `0` 禁用（与 yudao 的 0/1 相反，见 6.6 差异说明）。
 - 跨表引用只存 ID，**不建物理外键**，由 Service 层保证一致性。
-- `creator` / `updater` 由 base 的 Model 基类自动填充，业务代码不手工赋值：`BeforeCreate` 写入 `creator` 与 `created_at`，`BeforeUpdate` 写入 `updater` 与 `updated_at`。当前登录者从 base 的上下文读取；无登录态的场景（定时任务、数据初始化）留空。**审计字段只是「业务不显式写入」的一个例子，完整的自动写入清单见 6.9。**
+- `creator` / `updater` 由 base 的 Model 基类统一填充，业务代码不手工赋值：Repository 写入前调用 `FillCreate`（写 `id`、`creator`、`created_at`，并把 `updated_at` 置为同一时刻）与 `FillUpdate`（写 `updater`、`updated_at`）。查询构造器不触发框架钩子，因此这两个方法是**显式调用**，不是自动回调（见 15.3）。当前登录者从 base 的上下文读取；无登录态的场景（定时任务、数据初始化）留空。**审计字段只是「业务不显式写入」的一个例子，完整的自动写入清单见 6.9。**
 
 ### 6.2 base 模块表
 
-base 只持有一张认证日志表。令牌采用**纯 JWT 无状态**方案，不落库、不维护黑名单（见 9.2）。
+base 只持有一张认证日志表。令牌采用**双令牌 + Redis** 方案，状态存 Redis、可主动失效（见 9.2）。
 
 #### auth_login_log 登录日志
 | 字段 | 类型 | 说明 |
@@ -215,8 +219,6 @@ base 只持有一张认证日志表。令牌采用**纯 JWT 无状态**方案，
 | password | varchar(255) | bcrypt 哈希 |
 | nickname | varchar(64) | 昵称 |
 | remark | varchar(500) | 备注 |
-| dept_id | bigint | 部门 ID |
-| post_ids | varchar(255) | 岗位 ID 集合，逗号分隔 |
 | email | varchar(128) | 邮箱 |
 | mobile | varchar(20) | 手机号 |
 | sex | tinyint | 0 未知 / 1 男 / 2 女 |
@@ -226,43 +228,17 @@ base 只持有一张认证日志表。令牌采用**纯 JWT 无状态**方案，
 | last_login_at | datetime | 最后登录时间 |
 | creator / created_at / updater / updated_at / deleted_at | — | 审计字段 |
 
-索引：`uk_username(username)`、`uk_email(email)`、`uk_mobile(mobile)`、`idx_dept_id(dept_id)`。
+索引：`uk_username(username)`、`uk_email(email)`、`uk_mobile(mobile)`。
 
-#### system_dept 部门
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | bigint | 主键 |
-| name | varchar(64) | 部门名称 |
-| parent_id | bigint | 父部门 ID，0 为顶级 |
-| sort | int | 排序 |
-| leader_user_id | bigint | 负责人用户 ID |
-| phone | varchar(20) | 联系电话 |
-| email | varchar(64) | 邮箱 |
-| status | tinyint | 状态 |
-
-索引：`idx_parent_id(parent_id)`。
-
-#### system_post 岗位
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | bigint | 主键 |
-| name | varchar(64) | 岗位名称 |
-| code | varchar(64) | 岗位编码，唯一 |
-| sort | int | 排序 |
-| status | tinyint | 状态 |
-| remark | varchar(500) | 备注 |
-
-索引：`uk_code(code)`。
+> 简单系统不引入部门与岗位：`system_users` 只保留账号本身的信息，人员组织关系交给外部系统或后续按需扩展。
 
 #### system_role 角色
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | bigint | 主键 |
 | name | varchar(64) | 角色名称 |
-| code | varchar(64) | 角色标识，唯一，如 `admin` |
+| code | varchar(64) | 角色标识，唯一，如 `SUPER_ADMIN` |
 | sort | int | 排序 |
-| data_scope | tinyint | 1 全部 / 2 指定部门 / 3 本部门 / 4 本部门及以下 / 5 仅本人 |
-| data_scope_dept_ids | varchar(500) | 指定部门 ID 集合（data_scope = 2 时生效） |
 | status | tinyint | 状态 |
 | type | tinyint | 1 内置角色 / 2 自定义角色 |
 | remark | varchar(500) | 备注 |
@@ -488,32 +464,33 @@ base 只持有一张认证日志表。令牌采用**纯 JWT 无状态**方案，
 
 | 项 | yudao | 本项目 | 原因 |
 |---|---|---|---|
-| 审计时间字段 | `create_time` / `update_time` | `created_at` / `updated_at` | Goravel `orm.Model` 原生支持，零配置 |
-| 逻辑删除 | `deleted` bit(1) | `deleted_at` datetime | Goravel 软删除约定字段；唯一键与软删除的冲突处理见 6.8(2) |
+| 审计时间字段 | `create_time` / `update_time` | `created_at` / `updated_at` | 沿用 Goravel 命名习惯；由 `base/model.BaseModel` 统一声明，不用 `orm.Model` |
+| 逻辑删除 | `deleted` bit(1) | `deleted_at` datetime | 沿用 Goravel 约定字段，由 Repository 显式过滤与写入（15.3）；唯一键冲突处理见 6.8(2) |
 | 创建/更新人 | `creator` / `updater` | 同 yudao | 直接沿用 |
 | `status` 取值 | 0 开启 / 1 关闭 | 1 启用 / 0 禁用 | 更符合直觉，业务代码可读性更好 |
 | 主键 | `bigint AUTO_INCREMENT` | 雪花 ID（`bigint`，应用侧生成） | 不暴露业务量、天然支持分库分表；代价是需处理字符串序列化与时钟回拨 |
 | 表前缀 | `system_` / `infra_` / `member_` | 同 yudao | 便于直接对照 |
 | 金额单位 | 分（Integer/Long） | bigint 分 | 一致 |
-| 认证模式 | OAuth2，access + refresh 令牌落库，支持强制下线与多端管理 | 纯 JWT 无状态，令牌不落库 | 省去会话表与查库开销；代价是没有主动失效与多端管理能力 |
-| 认证表 | `system_oauth2_*`、`system_login_log` 归 system 模块 | 只保留 `auth_login_log`（归 base），令牌表取消 | 令牌状态不落库，登录日志仍统一留存 |
+| 认证模式 | OAuth2，access + refresh 令牌落库，支持强制下线与多端管理 | 双令牌 + Redis，access 短效 / refresh 长效 | 不建会话表，令牌状态放 Redis；每次请求一次 Redis 查询，换取登出即失效与多端独立 |
+| 认证表 | `system_oauth2_*`、`system_login_log` 归 system 模块 | 只保留 `auth_login_log`（归 base），令牌表取消 | 令牌状态落 Redis，登录日志仍统一留存 |
 
 ### 6.7 迁移文件规范
 
 - 命名：`YYYYMMDDHHMMSS_create_xxx_table.go`，一一对应单表。
 - 建表顺序：
   1. **base**：`auth_login_log`
-  2. **system**：`system_dept` → `system_post` → `system_users` → `system_role` → `system_menu` → `system_user_role` → `system_role_menu` → `system_dict_type` → `system_dict_data` → `system_notice` → `system_operate_log`
+  2. **system**：`system_users` → `system_role` → `system_menu` → `system_user_role` → `system_role_menu` → `system_dict_type` → `system_dict_data` → `system_notice` → `system_operate_log`
   3. **infra**：`infra_config` → `infra_file_config` → `infra_file` → `infra_job` → `infra_job_log` → `infra_api_access_log` → `infra_api_error_log`
   4. **member**：`member_level` → `member_user` → `member_level_record` → `member_point_record` → `member_sign_record` → `member_tag` → `member_tag_ref` → `member_group`
 - 每个迁移的 `Down()` 必须实现 `DropIfExists`，保证可回滚。
 - 表名在迁移中显式指定，同时把 Model 的表名方法写死，避免复数化推导歧义。
+- 建表必须写**表注释与列注释**：表注释与本文档的表标题一致，列注释取自 6.x 的字段说明（状态类字段注明取值含义）。Schema Builder 用 `table.Comment("后台用户表")` / `table.String("nickname", 64).Comment("昵称")`，原生 SQL 用 `COMMENT='...'`。`SHOW CREATE TABLE` 与 DBA 排查都靠它。
 - 日志类表（`*_log`）数据量大，建议建表时即按 `created_at` 建索引，并规划定期归档。
-- 带 `uk_*` 的表在同一个迁移里声明生成列 `deleted_key` 并把它放进唯一键（写法见 6.8(2)，不需要它的键见 6.8(3)）；生成列由数据库维护，`Down()` 跟着 `DropIfExists` 一起消失，无需额外处理。
+- 需要「删除后复用」的 `uk_*` 表，在同一个迁移里声明生成列 `deleted_key` 并把它放进唯一键（规则见 6.8(2)、SQL 写法见 15.9，不需要它的键见 6.8(3)）；其余表唯一键直接建在业务键上。生成列由数据库维护，`Down()` 跟着 `DropIfExists` 一起消失，无需额外处理。
 
 ### 6.8 唯一约束约定
 
-唯一性必须由数据库兜底：Service 层的「先查后插」存在并发窗口，只能用作友好提示，不能作为唯一性保证。本节集中说明各表的唯一键策略，**6.2 ~ 6.5 各表小节里列出的 `uk_*` 是「业务键」，实现时按本节规则补 `deleted_key` 或按 6.8(3) 显式去掉**，两处若有出入以本节为准。
+唯一性必须由数据库兜底：Service 层的「先查后插」存在并发窗口，只能用作友好提示，不能作为唯一性保证。本节集中说明各表的唯一键策略，**6.2 ~ 6.5 各表小节里列出的 `uk_*` 是「业务键」，实现时按 6.8(3) 的清单决定是否补 `deleted_key`**，两处若有出入以本节为准。
 
 #### （1）命名、列顺序与归一化
 
@@ -523,7 +500,7 @@ base 只持有一张认证日志表。令牌采用**纯 JWT 无状态**方案，
 | 列顺序 | 多列唯一键按「区分度高 → 低」排列，便于复用索引前缀做等值查询 |
 | 大小写 | 唯一键涉及的 varchar 列沿用表的 `utf8mb4_unicode_ci`，唯一性**天然大小写不敏感**；Service 查重直接用 `=`，不允许改写成 `_bin` 或手工 `LOWER()` |
 | 归一化 | 写入前归一化：手机号去空格与 `+86`、账号与邮箱转小写、编码去首尾空格。唯一性是「归一化之后的值」的唯一性 |
-| 可空字段 | `system_users.email` / `mobile` 这类可选唯一字段用 **NULL** 表示未填写，**禁止用空字符串**——唯一索引不比较 NULL，但会把两个 `''` 判为重复，导致第二个用户写不进去 |
+| 可空字段 | `system_users.email` / `mobile` 这类可选唯一字段用 **NULL** 表示未填写，**禁止用空字符串**——唯一索引不比较 NULL，但会把两个 `''` 判为重复，导致第二个用户写不进去；Model 中对应字段必须声明为 `*string`，否则查询时 `converting NULL to string is unsupported` |
 
 #### （2）软删除与唯一索引的冲突
 
@@ -533,10 +510,12 @@ base 只持有一张认证日志表。令牌采用**纯 JWT 无状态**方案，
 |---|---|---|
 | 不让位 | 唯一索引只含业务键，软删后该值永久占用 | 最简，但用户删掉的账号名再也用不了 |
 | 应用层让位 | 删除时把业务键改写成 `zhangsan__deleted_1234` | 业务代码要参与，历史数据可读性变差，审计信息失真 |
-| 标记列让位 | 加 `deleted` bigint 列，存活写 `0`、删除写 `id`，唯一键为 `(业务键, deleted)` | 无 NULL 陷阱，但该列必须手工维护，GORM 软删除不会改写它 |
-| **生成列让位（本项目采用）** | 加生成列 `deleted_key`，唯一键为 `(业务键, deleted_key)` | 应用代码零改动：GORM 软删除照常写 `deleted_at`，生成列自动跟随 |
+| 标记列让位 | 加 `deleted` bigint 列，存活写 `0`、删除写 `id`，唯一键为 `(业务键, deleted)` | 无 NULL 陷阱，但该列必须手工维护，软删除逻辑不会改写它 |
+| 生成列让位（按表选用） | 加生成列 `deleted_key`，唯一键为 `(业务键, deleted_key)` | 应用代码零改动：软删除照常写 `deleted_at`，生成列由数据库自动跟随；代价是 DDL 只能用原生 SQL、多一列 |
 
-采用生成列时，建表语句里这样写（该表除 `uk_username` 外，`uk_email`、`uk_mobile` 同样处理）：
+只有**确实需要「删掉再建同名」**的表才用生成列。`system_users` 不用：后台账号删除等于作废，账号名不复用反而能避免审计混淆，唯一键直接建在业务键上即可。
+
+需要复用时这样写（该表除 `uk_username` 外，`uk_email`、`uk_mobile` 同样处理）：
 
 ```sql
 CREATE TABLE system_users (
@@ -547,18 +526,18 @@ CREATE TABLE system_users (
   deleted_key  datetime    GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED,
   PRIMARY KEY (id),
   UNIQUE KEY uk_username (username, deleted_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台用户表';
 ```
 
 - 存活行（`deleted_at IS NULL`）的生成值恒为哨兵 `1970-01-01 00:00:00`，等价于「只对存活行施加唯一约束」；软删除后生成值变为删除时刻，唯一键让位，同名值可重新创建。
-- 生成列必须定义在唯一键之前（列不存在时无法建索引），且只能写在原生迁移 SQL 里——`AutoMigrate` 不认识它。该表的 `deleted_at` 保持本项目统一的时间字段类型 `datetime NULL`：GORM 在 MySQL 下默认把时间字段映射为 `datetime(3)`，生成列要与它**同型**，否则小数位被截断或进位，秒级判断会失真。表内已有数据时，用一条 `ALTER TABLE ... ADD COLUMN ..., ADD UNIQUE KEY ...` 改到位。
-- `deleted_key` **不在 Model 中声明**：GORM 只发送结构体声明过的列，因此既不会被批量写入覆盖，也不会被 `Select *` 带回业务对象。
-- 精度与 `deleted_at` 一致（秒级）：同一业务键在同一秒内被删除两次才会重新撞键，实践中可忽略。若不能接受，有两条出路：把该表的 `deleted_at` 与生成列同时提升为 `datetime(3)`（GORM 软删除支持毫秒）；或改用上面的「标记列让位」路线，把 `deleted` 写成 `id`（雪花 ID 天然唯一）。注意唯一键**不能**改写成 `(业务键, deleted_key, id)`——存活行的 `deleted_key` 是同一个哨兵值，加 `id` 后等于放弃对存活行的唯一约束。
+- 生成列必须定义在唯一键之前（列不存在时无法建索引），且只能写在原生迁移 SQL 里——Schema Builder 不认识它（模板见 15.9）。该表的 `deleted_at` 与生成列**必须同型**（本项目统一 `datetime NULL`），否则删除时刻被截断或进位，秒级判断会失真。表内已有数据时，用一条 `ALTER TABLE ... ADD COLUMN ..., ADD UNIQUE KEY ...` 改到位。
+- `deleted_key` **不在 Model 中声明**：写操作用显式 `map[string]any` 列名，读操作只映射 `db` tag 声明的列，因此它既不会被误写，也不会被带回业务对象。
+- 精度与 `deleted_at` 一致（秒级）：同一业务键在同一秒内被删除两次才会重新撞键，实践中可忽略。若不能接受，有两条出路：把该表的 `deleted_at` 与生成列同时提升为 `datetime(3)`（写入值自带毫秒即可）；或改用上面的「标记列让位」路线，把 `deleted` 写成 `id`（雪花 ID 天然唯一）。注意唯一键**不能**改写成 `(业务键, deleted_key, id)`——存活行的 `deleted_key` 是同一个哨兵值，加 `id` 后等于放弃对存活行的唯一约束。
 - 只有**存在唯一索引**的表才需要 `deleted_key`；没有唯一键的表照常软删除，不加此列。
 
 #### （3）哪些键允许「删除后复用」
 
-默认**允许复用**（即按 (2) 带 `deleted_key`）。唯一的例外是「一次性事实记录」——删除后仍必须占位，因此唯一索引**不带** `deleted_key`：
+是否复用**逐表决定**，默认不复用（唯一键直接建在业务键上）；清单里标「是」且确实存在「删掉再建同名」诉求的表，才按 (2) 加 `deleted_key`。另一类是「一次性事实记录」——删除后仍必须占位，唯一索引**不带** `deleted_key`：
 
 | 表 | 唯一键 | 为什么不允许复用 |
 |---|---|---|
@@ -583,15 +562,14 @@ CREATE TABLE system_users (
 预查重不能替代唯一索引，唯一索引也不能替代友好文案，两者都要有：
 
 - 前置校验：Service 先查重，命中即返回对应业务错误码（`errs.SystemUsernameExists` 之类）。
-- 落库兜底：Repository 写入/更新时捕获 MySQL `1062 Duplicate entry`，转换成**同一个**业务错误码抛出；禁止把驱动原始错误透传给前端。
+- 落库兜底：Repository 写入/更新时捕获 MySQL `1062 Duplicate entry`，转换成**同一个**业务错误码抛出；禁止把驱动原始错误透传给前端。判重 helper 的建议实现见 15.3。
 - 二者返回同一个错误码，前端无需区分「已存在」与「并发撞键」。
 
 #### （6）全量清单
 
 | 表 | 唯一键 | 删除后复用 | 备注 |
 |---|---|---|---|
-| `system_users` | `uk_username`、`uk_email`、`uk_mobile` | 是 | 三个键各自带 `deleted_key`；`email`、`mobile` 可空 |
-| `system_post` | `uk_code` | 是 | 岗位编码唯一 |
+| `system_users` | `uk_username`、`uk_email`、`uk_mobile` | 否 | 账号删除后不复用，唯一键直接建在业务键上；`email`、`mobile` 用 NULL 表示未填 |
 | `system_role` | `uk_code` | 是 | 内置角色 `admin` 由初始化写入，不允许删除 |
 | `system_menu` | 无 | — | `permission` 仅按钮类节点填写，唯一性由业务层保证（见 6.3） |
 | `system_user_role` / `system_role_menu` | 见 (4) | 是 | 复合唯一 |
@@ -603,7 +581,7 @@ CREATE TABLE system_users (
 | `member_level` | `uk_level` | 是 | 删除等级前需确认无会员占用，属于 Service 职责 |
 | `member_sign_record` | `uk_user_day(user_id, day)` | 否 | 见 (3) |
 | `member_tag_ref` | `uk_user_tag(user_id, tag_id)` | 是 | 见 (4) |
-| `member_tag` / `member_group` / `system_notice` / `system_dept` / `auth_login_log` / `system_operate_log` / `infra_api_*_log` | 无 | — | 名称类字段允许重复或由业务层保证，日志表只追加 |
+| `member_tag` / `member_group` / `system_notice` / `auth_login_log` / `system_operate_log` / `infra_api_*_log` | 无 | — | 名称类字段允许重复或由业务层保证，日志表只追加 |
 
 > 唯一键只保护「值唯一」，不保护「语义正确」：`member_user.level_id` 指向已删除等级、`system_user_role.role_id` 指向不存在的角色，数据库都不作约束（本项目不建物理外键，见 6.1），一致性由 Service 层负责。
 
@@ -611,13 +589,15 @@ CREATE TABLE system_users (
 
 统一成一句：**凡是框架、Model 基类或中间件能够推断出来的数据，业务代码一律不显式写入；漏写或手写都算缺陷。** 业务层只负责「没有任何自动来源」的业务字段。
 
+「不显式写入」的执行位置是 **Repository**：查询构造器不触发框架钩子，填充动作必须在写入前显式调用（`Base.FillCreate` / `Base.FillUpdate`），Service 与 Controller 都不参与。
+
 | 数据 | 写入方 | 业务是否显式写 | 说明 |
 |---|---|---|---|
-| `id` | base Model 基类 `BeforeCreate` | 否 | 雪花 ID，含时钟回拨处理 |
-| `creator` / `created_at` | base Model 基类 `BeforeCreate` | 否 | 当前登录者取自 base 上下文 |
-| `updater` / `updated_at` | base Model 基类 `BeforeUpdate` | 否 | 同上 |
-| `deleted_at` | GORM 软删除 | 否 | 关联表也走软删除，见 6.8(4) |
-| `deleted_key` | 数据库生成列 | 否 | Model 中不声明该字段 |
+| `id` | Repository 写入前调 `Base.FillCreate` | 否 | 雪花 ID，含时钟回拨处理 |
+| `creator` / `created_at` | 同上 `FillCreate` | 否 | 当前登录者取自 base 上下文 |
+| `updater` / `updated_at` | Repository 写入前调 `Base.FillUpdate` | 否 | 软删除同样先调它 |
+| `deleted_at` | Repository 显式写列 | 否 | 构造器不会自动加软删除条件，读写两侧都需显式处理；关联表同样走软删除，见 6.8(4) |
+| `deleted_key` | 数据库生成列 | 否 | 仅「删除后复用」的表才有；Model 中不声明该字段 |
 | `system_operate_log` | system 的 `OperateLog` 中间件 | 否 | 语义在路由注册时用元数据声明（9.5） |
 | `infra_api_access_log` | infra 的 `ApiAccessLog` 中间件 | 否 | 每个请求一条 |
 | `infra_api_error_log` | infra 的 `ApiErrorLog` 中间件 | 否 | 只记系统异常（见 9.5） |
@@ -650,8 +630,6 @@ CREATE TABLE system_users (
 │   ├── profile-menus               我的菜单与权限
 │   ├── users                       用户管理
 │   │   └── PUT  /{id}/reset-password
-│   ├── depts                       部门管理
-│   ├── posts                       岗位管理
 │   ├── roles
 │   │   ├── GET  /{id}/menus        角色已授权菜单
 │   │   └── PUT  /{id}/menus        分配菜单权限
@@ -716,6 +694,7 @@ CREATE TABLE system_users (
 - 字段固定为 `code` / `msg` / `data` 三个，**不额外增加 `success` 字段**，判断成功一律用 `code == 0`。
 - 成功时 `msg` 返回**空字符串**，而不是 `"ok"` 之类的文案。
 - **HTTP 响应状态码统一为 200**，业务结果只由 body 中的 `code` 表达，不借助 HTTP 状态码传递业务语义。
+- 成功响应**固定带 `data` 字段**（无数据时为 `null`），避免前端按字段存在性判断；失败响应省略 `data`。落地上是 `response.Body` 与 `response.FailBody` 两个结构体（15.6）。
 
 > 例外：静态资源、第三方回调等非标准接口不套用该包装，单独定义返回内容，与 yudao 的处理方式一致。
 
@@ -725,8 +704,8 @@ CREATE TABLE system_users (
 
 | 参数 | 类型 | 默认值 | 约束 | 说明 |
 |---|---|---|---|---|
-| pageNo | int | 1 | ≥ 1，或 `pageSize = -1` 时忽略 | 页码，从 1 开始 |
-| pageSize | int | 10 | `-1`，或 1 ~ 200 | 每页条数；`-1` 表示不分页（导出等场景），校验时需为 `-1` 单独放行 |
+| pageNo | int | 1 | ≥ 1 | 页码，从 1 开始；小于 1 时按 1 处理 |
+| pageSize | int | 10 | 1 ~ 200 | 每页条数；非正数或超过 200 直接返回 `400` |
 
 响应结构（对应 yudao 的 `PageResult`）：
 
@@ -735,6 +714,8 @@ CREATE TABLE system_users (
 ```
 
 分页响应**只包含 `list` 与 `total`**，不返回 `page` / `size` / `pages`，与 yudao 一致。
+
+落地要点：`param.Page.Normalize` 负责校验并返回错误，`pageSize` 不在 1 ~ 200 时返回 `400`，Controller 必须处理该错误。分页接口**不接受 `pageSize = -1`**：不分页的导出场景不套用 `param.Page`，由专用接口自行取全量，Repository 也不为负数准备分支。
 
 ### 8.3 错误码体系
 
@@ -786,7 +767,7 @@ CREATE TABLE system_users (
 
 | 模块 | 第三段 | 子模块 |
 |---|---|---|
-| system | 001 / 002 / 003 / 004 / 005 / 006 / 007 / 008 | 认证登录 / 用户 / 角色 / 菜单权限 / 部门 / 岗位 / 字典 / 通知公告 |
+| system | 001 / 002 / 003 / 004 / 005 / 006 | 认证登录 / 用户 / 角色 / 菜单权限 / 字典 / 通知公告 |
 | infra | 001 / 002 / 003 / 004 | 参数配置 / 文件 / 定时任务 / API 日志 |
 | member | 001 / 002 / 003 / 004 / 005 | 会员 / 会员等级 / 积分 / 签到 / 标签与分组 |
 
@@ -798,7 +779,6 @@ CREATE TABLE system_users (
 | `1-002-001-001` | 登录失败，账号已被禁用 |
 | `1-002-002-001` | 用户不存在 |
 | `1-002-003-001` | 角色已被用户引用，不可删除 |
-| `1-002-005-001` | 部门存在子级，不可删除 |
 | `1-001-002-001` | 文件上传失败 |
 | `1-001-003-001` | cron 表达式非法 |
 | `1-004-003-001` | 积分不足 |
@@ -857,7 +837,7 @@ func (i *ID) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// 存取数据库：GORM 通过这两个方法读写
+// 存取数据库：查询构造器通过这两个方法读写
 func (i ID) Value() (driver.Value, error) { return int64(i), nil }
 
 func (i *ID) Scan(src any) error {
@@ -886,11 +866,11 @@ func (i *ID) Scan(src any) error {
 | Model 主键与外键 | `ID types.ID` |
 | VO / DTO 中的 ID 字段 | `ID types.ID` |
 | 路径参数 | `strconv.ParseInt(ctx.Request().Input("id"), 10, 64)` 后转 `types.ID` |
-| JWT 载荷等裸 int64 场景 | 显式 `strconv.FormatInt(int64(id), 10)` |
+| Redis 值等裸 int64 场景 | 显式 `strconv.FormatInt(int64(id), 10)` |
 
 这样 Model、VO、Request 全部声明为 `types.ID`，序列化行为自动统一，无需再逐字段加 tag，也杜绝了新字段忘记加 `,string` 的问题。
 
-> 注意两点：Model 中主键需显式声明 `gorm:"primaryKey"`，因为自定义类型的字段名推导与 `ID` 命名不再自动匹配；`types.ID` 只用于**实体标识**，`status`、`sort`、`type` 这类枚举与计数字段不要套用。
+> 注意两点：Model 中主键需显式声明 `db:"id"`，不要依赖字段名推导；`types.ID` 只用于**实体标识**，`status`、`sort`、`type` 这类枚举与计数字段不要套用。
 
 ---
 
@@ -903,42 +883,41 @@ func (i *ID) Scan(src any) error {
 | 账号表 | `system_users` | `member_user` |
 | 登录入口 | `/api/v1/system/auth/login` | `/api/v1/member/auth/login` |
 | 认证 guard | `admin` | `member` |
-| 中间件 | `jwt_auth` | `member_auth` |
-| 令牌载荷 | `user_id` + `type=admin` | `member_id` + `type=member` |
+| 中间件 | `token_auth` | `member_auth` |
+| 令牌载荷 | 无，令牌即 Redis key | 无，令牌即 Redis key |
 | 权限控制 | RBAC 逐项校验 | 仅登录态校验 |
-| 令牌存储 | 无，纯 JWT 无状态 | 无，纯 JWT 无状态 |
+| 令牌存储 | Redis，双令牌（见 9.2） | Redis，双令牌（见 9.2） |
 | 登录日志 | `auth_login_log`，`user_type=1` | 同表，`user_type=2` |
 
-两组令牌互不通用：`jwt_auth` 只接受 `type=admin`，`member_auth` 只接受 `type=member`，交叉访问返回系统错误码 `401`（账号未登录）。
+两套令牌互不通用：`token_auth` 只认后台用户的令牌，`member_auth` 只认会员的令牌，交叉访问返回系统错误码 `401`（账号未登录）。
 
-### 9.2 令牌方案
+### 9.2 令牌方案（双令牌 + Redis）
 
-采用**纯 JWT 无状态**方案，令牌不落库：
+采用**双令牌**方案，令牌状态全部落在 Redis，不使用 JWT：
 
-- 登录签发一对 JWT：access_token（载荷含用户 ID 与 `type`）与 refresh_token，有效期由 `config/jwt.go` 的 `ttl` / `refresh_ttl` 控制。载荷中的用户 ID **以字符串存放**，避免前端解码 payload 时因 JS 精度丢失拿到错误的 ID。
-- 每次请求仅验签并校验 `exp`，不查库、不查缓存。
-- refresh 时验签并校验 refresh_token 未过期，重新签发一对新令牌。
-- 登出由前端丢弃令牌完成，服务端只写 `auth_login_log`，不维护黑名单。
-- 由于令牌无法提前失效，建议 access_token 的 `ttl` 取较短值（如 30 分钟），压缩令牌泄露或人员离职场景的风险窗口，续期交给 refresh_token。
+| 令牌 | 用途 | 有效期 | 存储 |
+|---|---|---|---|
+| access_token | 随每次业务请求放在 `Authorization: Bearer` 中 | `ACCESS_TOKEN_TTL`，默认 1800 秒 | `auth:access:{sha256(token)}` → 用户 ID |
+| refresh_token | 只用于换取新的一对令牌，不参与业务请求 | `REFRESH_TOKEN_TTL`，默认 604800 秒 | `auth:refresh:{sha256(token)}` → 用户 ID |
 
-**由此放弃的能力**（这是选择该方案的明确代价，不是遗漏）：
+- 登录：校验账号密码与状态 → 生成两个 32 字节随机串 → 写入 Redis → 返回 `accessToken` / `refreshToken` / `expiresIn` / `refreshExpiresIn`。
+- 鉴权：`token_auth` 中间件用访问令牌查 Redis，命中才放行并把用户 ID 注入上下文；未命中返回 `401`。
+- 续期：`POST /auth/refresh` 用刷新令牌换新的一对令牌，**旧刷新令牌立即删除**（轮换），旧访问令牌按自身短 TTL 自然过期。
+- 登出：`POST /auth/logout` 删除两个 key，立即失去访问权与续期能力；该接口不挂鉴权，访问令牌已过期时也能调用。
+- Redis 只存令牌的 SHA-256，不存明文：Redis 数据被读走也拿不到可用令牌。
+- 多端登录：每次登录生成独立的 key，天然互不影响；需要踢下线时删除对应用户的 `auth:*` 键即可。
+- 代价：每个受保护请求多一次 Redis 查询；Redis 不可用时登录态整体失效（fail closed），这是有状态方案的必然取舍。
 
-| 放弃的能力 | 具体影响 |
-|---|---|
-| 令牌立即失效 | 登出、修改密码后，旧令牌在自然过期前依然可用 |
-| 强制下线 | 无法让某个已登录账号立刻失去访问权 |
-| 多端登录管理 | 无法查看或管理在线设备列表 |
-
-> 后续若需要上述能力，最小改动是引入 `github.com/goravel/redis`，在 Redis 中记录 access_token 的 `jti` 黑名单（TTL 设为令牌剩余有效期），并把 `config/cache.go` 的默认驱动由 `memory` 切到 redis。届时**无需改动任何表结构**。
+Redis 连接在 `config/database.go` 的 `redis.default`，缓存驱动在 `config/cache.go`（`default=redis`），有效期在 `config/token.go`。
 
 ### 9.3 后台权限（RBAC）
 
 1. 登录：校验账号密码 → 校验 `status` → 调用 base 认证组件签发令牌 → 写 `auth_login_log`。
-2. `jwt_auth` 解析令牌并注入当前用户；白名单路由跳过。
+2. `token_auth` 用访问令牌查 Redis 并注入当前用户；白名单路由跳过。
 3. `permission` 中间件查询权限集合：`system_user_role` → `system_role_menu` → `system_menu.permission`，与路由声明的标识比对，不通过返回系统错误码 `403`（没有该操作权限）。
 4. 权限集合缓存，key 形如 `rbac:perms:{userId}`；角色、菜单、角色授权或用户角色变更时主动清除缓存。
-5. 超级管理员（角色 `code = admin`）直接放行。
-6. 数据权限由 `system_role.data_scope` 与 `system_dept` 树决定，在 Repository 查询层注入部门范围条件。
+5. 超级管理员（角色 `code = SUPER_ADMIN`）直接放行。
+6. 简单系统不做数据权限：接口级 RBAC 已覆盖「能不能访问」，不按组织架构再收窄数据范围。
 
 ### 9.4 会员认证
 
@@ -950,17 +929,17 @@ func (i *ID) Scan(src any) error {
 ### 9.5 中间件链
 
 ```
-后台：ApiErrorLog → ApiAccessLog → Recovery → ExceptionHandler → CORS → RequestLog → JWTAuth(白名单) → Permission → OperateLog
+后台：ApiErrorLog → ApiAccessLog → Recovery → ExceptionHandler → CORS → RequestLog → TokenAuth(白名单) → Permission → OperateLog
 会员：ApiErrorLog → ApiAccessLog → Recovery → ExceptionHandler → CORS → RequestLog → MemberAuth(白名单)
 ```
 
 三处顺序不是随手排的：
 
-- `ApiAccessLog` 特意注册在靠外层，是为了统计**包含后续所有中间件在内的完整耗时**。用户身份在 `c.Next()` 返回后从上下文读取——此时 `JWTAuth` 已把用户写入上下文，因此最外层也能拿到身份，无需把它挪到鉴权之后。同时这样还能记录到被 `Permission` 拦截（403）的请求。
+- `ApiAccessLog` 特意注册在靠外层，是为了统计**包含后续所有中间件在内的完整耗时**。用户身份在 `c.Next()` 返回后从上下文读取——此时 `TokenAuth` 已把用户写入上下文，因此最外层也能拿到身份，无需把它挪到鉴权之后。同时这样还能记录到被 `Permission` 拦截（403）的请求。
 - `ApiErrorLog` 比 `ApiAccessLog` 更靠外，是为了让错误日志的落库耗时不计入访问日志的 `duration`：中间件的前置阶段由外向内进入、**后置阶段由内向外返回**，最外层的 `ApiErrorLog` 最后落库，`ApiAccessLog` 统计耗时（后置阶段）时它还没开始写库。
 - `Recovery` 不再是注册链上的第一个：两个日志中间件都在它之外，原因见 9.5「错误日志的边界」。
 
-`Recovery`、`ExceptionHandler`、`CORS`、`RequestLog`、`JWTAuth`、`MemberAuth`、`Permission` 实现于 base；`ApiAccessLog`、`ApiErrorLog` 实现于 infra；`OperateLog` 实现于 system（写 `system_operate_log`）。
+`Recovery`、`ExceptionHandler`、`CORS`、`RequestLog`、`TokenAuth`、`MemberAuth`、`Permission` 实现于 base；`ApiAccessLog`、`ApiErrorLog` 实现于 infra；`OperateLog` 实现于 system（写 `system_operate_log`）。
 
 `ExceptionHandler` 是 8.3 中「全局异常中间件」的落地，把 Service 抛出的业务异常转换为 `{"code","msg","data":null}`；`Recovery` 只兜住它没接住的异常。
 
@@ -1031,26 +1010,28 @@ r.Post("/users", userController.Create).Middleware(operate("用户管理", "新�
 | 路由路径 | 小写中划线 | `/reset-password`、`/api-logs/access` |
 | 权限标识 | `模块:资源:动作` | `system:user:create`、`infra:job:update` |
 | 错误码常量 | 模块 + 语义，**不叠加 `Err` 前缀**（结论与理由见 11.2） | `errs.SystemPasswordWrong`、`errs.MemberPointsNotEnough` |
-| Model 结构体 | PascalCase 单数形式 | `SystemUser`（对应 `system_users`）、`MemberLevel` |
+| Model 结构体 | PascalCase 单数形式 + `Model` 后缀 | `SystemUserModel`（对应 `system_users`）、`MemberLevelModel` |
+| 请求结构体 | PascalCase + `Request` 后缀，动作在前 | `UserCreateRequest`、`UserUpdateRequest`、`LoginRequest` |
 | ID 类型 | 主键与外键统一用 `types.ID` | `ID types.ID`（见 8.4） |
-| 枚举类型 | PascalCase 语义名 | `UserStatus`、`LoginType` |
-| 枚举常量 | 类型名 + 语义 | `UserStatusEnabled`、`LoginTypeLogout` |
+| 枚举类型 | PascalCase 语义名 + `Enum` 后缀 | `CommonStatusEnum`、`LoginTypeEnum` |
+| 枚举常量 | 语义名 + 取值，不带 `Enum` 后缀 | `CommonStatusEnabled`、`LoginTypeLogout` |
+| 表与字段注释 | 建表必须写表注释与全部字段注释，内容与 6.x 字段说明一致，状态类字段注明取值 | `COMMENT '状态：0 禁用 / 1 启用'` |
 
-> 表名与结构体名的对应关系在 Model 的 `TableName()` 中显式声明，避免框架复数化推导错误（如 `system_users` 对应 `SystemUser`）。
+> 表名与结构体名的对应关系在 Model 的 `TableName()` 中显式声明，避免框架复数化推导错误（如 `system_users` 对应 `SystemUserModel`）。
 
 ### 11.1 枚举定义
 
 Go 没有 `enum` 关键字，统一用「自定义类型 + `const` 块」表达枚举，禁止把裸 `int` 或字符串字面量散落在业务代码里。
 
 ```go
-// app/modules/system/enums/user_status.go
+// app/modules/base/enums/common_status.go
 package enums
 
-type UserStatus int8
+type CommonStatusEnum int8
 
 const (
-	UserStatusDisabled UserStatus = 0 // 禁用
-	UserStatusEnabled  UserStatus = 1 // 启用
+	CommonStatusDisabled CommonStatusEnum = 0 // 禁用
+	CommonStatusEnabled  CommonStatusEnum = 1 // 启用
 )
 ```
 
@@ -1059,16 +1040,17 @@ const (
 | 项 | 要求 |
 |---|---|
 | 底层类型 | `int8`，与表里的 `tinyint` 对齐 |
-| 定义位置 | 各模块的 `enums/` 包；跨模块共用的（如 `user_type`）放 base 的 `enums/` |
+| 定义位置 | 只被单个模块使用的放该模块 `enums/` 包；跨模块共用的必须放 base 的 `enums/`，不得各模块重复定义 |
+| 启停状态 | 用户、角色、菜单等表的 `status` 统一使用 `base/enums.CommonStatusEnum`，不按业务再定义 `XxxStatusEnum` |
 | 连续值 | 用 `iota`；需要从 `1` 开始时写 `iota + 1` |
 | 必须实现 | `String()` 用于日志与描述，`IsValid()` 用于参数校验 |
 | 参数校验 | Request 中先过 `IsValid()`，不把取值硬编码进校验 tag |
 
 需要注意的三点：
 
-- **零值陷阱**：`var s UserStatus` 默认是 `0`，而本项目 `status` 的 `0` 恰是「禁用」这个有效值。创建时必须显式赋值，写入前用 `IsValid()` 拦住未赋值的字段，否则会静默产生禁用数据。
+- **零值陷阱**：`var s CommonStatusEnum` 默认是 `0`，而本项目 `status` 的 `0` 恰是「禁用」这个有效值。`IsValid()` **拦不住零值**（0 是合法值），所以「字段是否传了」必须由请求校验的 `required` 保证；Service 里的 `IsValid()` 只负责越界判断。
 - **穷尽性**：Go 的 `switch` 不检查是否覆盖全部枚举值，新增值后漏改不会编译报错。枚举数量上来后，在 CI 接入 `exhaustive` linter。
-- **序列化**：不实现额外方法时 JSON 输出为数字；若前端期望字符串，实现 `MarshalJSON` 统一转换。GORM 存取若遇类型问题，给字段加 `gorm:"type:tinyint"`。
+- **序列化**：不实现额外方法时 JSON 输出为数字；若前端期望字符串，实现 `MarshalJSON` 统一转换。数据库侧统一映射为 `tinyint`，Model 中声明为枚举类型并配 `db` tag 即可，不要加 `gorm` tag。
 
 枚举增多后可用 `stringer`（只生成 `String()`）或 `go-enum`（`String()` / `MarshalJSON` / `UnmarshalJSON` / `IsValid()` 全套）生成样板代码，注释中写 `//go:generate` 后用 `go generate ./...` 执行。
 
@@ -1105,7 +1087,7 @@ return errs.New(errs.SystemUsernameExists, username)
 - 与 8.3 的错误码区间一一对应：`System*` → `1-002-*-*`，`Infra*` → `1-001-*-*`，`Member*` → `1-004-*-*`。
 - base 的系统错误码**不带**模块前缀（`errs.BadRequest`、`errs.InternalServerError`），因为它们属于固定段（0 ~ 999）、全项目共用，没有模块归属。
 
-若同一文件同时需要 base 与模块的 `errs`，把 base 侧以 `baseerrs` 别名引入，不要为此改命名。
+若同一文件同时需要 base 与模块的 `errs`，把 base 侧以 `baseErrs` 别名引入，不要为此改命名。
 
 #### （3）系统错误码常量名同步为 PascalCase
 
@@ -1127,8 +1109,8 @@ return errs.New(errs.SystemUsernameExists, username)
 
 | 现有内容 | 处理方式 |
 |---|---|
-| `app/http/controllers/user_controller.go` | 示例代码（返回 `{"Hello":"12323111"}`），落地时迁移到 `app/modules/system/controller/`，原文件删除 |
-| `routes/web.go` 中的 `/users` 示例路由 | 随示例控制器一并移除 |
+| `app/http/controllers/user_controller.go` | 已删除（示例代码，业务改由 `app/modules/*/controller/` 承接） |
+| `routes/web.go` 中的 `/users` 示例路由 | 已随示例控制器移除 |
 | `routes/web.go` 的欢迎页与 `public` 静态目录 | 保留 |
 | `config/database.go` | 由 Postgres 改为 MySQL 连接配置 |
 | `config/auth.go` | 守卫由 `user` 改为 `admin` / `member` 双 guard |
@@ -1141,8 +1123,8 @@ return errs.New(errs.SystemUsernameExists, username)
 ## 13. 开发落地顺序
 
 1. **数据库切换**：`go.mod` 换驱动、`config/database.go` 改连接、`.env` 配 MySQL 并验证连通。
-2. **base 模块**：响应封装 → 错误码 → **雪花 ID 生成器（含时钟回拨处理）** → Model 基类（审计字段与自动填充）→ 通用请求基类 → 中间件（`Recovery`、`ExceptionHandler` 与错误槽、`CORS`、`RequestLog`、`JWTAuth` / `MemberAuth` / `Permission`，链序见 9.5）→ 认证组件（JWT 签发与校验 + 登录日志表）。雪花 ID 必须最先落地，各模块建表与写入都依赖它。
-3. **system 模块**：迁移 → Model → Repository → Service → Controller → 路由。建议顺序：部门 → 岗位 → 菜单 → 角色（含角色授权）→ 用户（含分配角色、重置密码）→ 认证登录 → 字典 → 通知公告 → 日志。
+2. **base 模块**：响应封装 → 错误码 → **雪花 ID 生成器（含时钟回拨处理）** → Model 基类（审计字段与 `FillCreate` / `FillUpdate`）→ 通用请求基类 → 中间件（`Recovery`、`ExceptionHandler` 与错误槽、`CORS`、`RequestLog`、`TokenAuth` / `MemberAuth` / `Permission`，链序见 9.5）→ 认证组件（双令牌签发与 Redis 校验 + 登录日志表）。雪花 ID 必须最先落地，各模块建表与写入都依赖它。
+3. **system 模块**：迁移 → Model → Repository → Service → Controller → 路由。建议顺序：菜单 → 角色（含角色授权）→ 用户（含分配角色、重置密码）→ 认证登录 → 字典 → 通知公告 → 日志。
 4. **infra 模块**：参数配置 → 文件配置与文件上传 → 定时任务与任务日志 → API 访问/错误日志中间件。
 5. **member 模块**：迁移 → Model → 等级 → 会员 → 注册/登录/找回密码 → 个人资料 → 积分与签到 → 标签与分组 → 后台会员管理接口。
 6. **聚合路由**：新增 `routes/modules.go`，在 `bootstrap/app.go` 的 `WithRouting` 中调用，并配置 `config/auth.go` 的双 guard。
@@ -1155,6 +1137,556 @@ return errs.New(errs.SystemUsernameExists, username)
 - **消息能力**：参考 yudao 补充短信（`system_sms_channel` / `template` / `log` / `code`）、邮件（`system_mail_account` / `template` / `log`）、站内信（`system_notify_template` / `message`）。
 - **地区数据**：补充 `system_area` 或引入第三方地区库，替换 member 中的 `area_id` 裸编码。
 - **会员成长体系**：签到连续奖励、经验值自动升级（定时任务扫描 `member_point_record`）。
-- **数据权限细化**：当前 `data_scope` 已覆盖全部 / 指定部门 / 本部门 / 本部门及以下 / 仅本人五档；后续如需按岗位、用户组等更细粒度授权，可在此之上扩展。
+- **组织架构与数据权限**：当前只做接口级 RBAC；后续若接入部门/岗位，再按组织树扩展数据范围。
 - **日志治理**：`infra_api_access_log` / `system_operate_log` / `auth_login_log` 数据量大，补充归档与清理定时任务。
 - **分库分表**：主键已采用雪花 ID，天然支持水平拆分；后续按业务域或时间分库时，无需改造主键方案。
+
+---
+
+## 15. 代码模板
+
+本章给出按**当前已落地实现**整理的模板（查询构造器 + `base/model.BaseModel`），新增一个实体时逐节复制改名即可。模板与 5.x / 6.x 的文字约定若有不一致，优先以本章为准，差异清单见 15.10。
+
+占位约定：表 `system_xxx`、结构体 `SystemXxxModel`、文件前缀 `xxx_`、错误码常量 `SystemXxxNotExists`。
+
+### 15.1 一个实体要新增的文件
+
+| 文件 | 说明 |
+|---|---|
+| `app/modules/{module}/model/xxx.go` | 表映射与表名常量，嵌入 `model.BaseModel` |
+| `app/modules/{module}/enums/xxx_type.go` | 本模块专属枚举；启停状态复用 base 公共枚举，不建 `xxx_status.go`（11.1） |
+| `app/modules/{module}/repository/xxx_repository.go` | 单表读写，唯一出现 SQL/构造器的地方 |
+| `app/modules/{module}/service/xxx_service.go` | 业务规则、事务边界，直接持有具体仓储类型 |
+| `app/modules/{module}/controller/xxx_controller.go` | 取参 → 调 Service → 出响应 |
+| `app/modules/{module}/request/xxx_request.go` | 入参、校验规则与中文文案 |
+| `app/modules/{module}/errs/{module}_error.go` | 本模块业务错误码（一模块一文件，只追加） |
+| `app/modules/{module}/route.go` | 追加路由 |
+| `database/migrations/YYYYMMDDHHMMSS_create_xxx_table.go` | 建表 |
+
+跨层复用的助手放在 base，不放业务模块：`base/result`（`Success` / `Page` / `Fail`）、`base/param`（`Bind` / `Validate` / `PathID` / `Page`）、`base/response`（`Body` / `FailBody` 与对应构造函数）、`base/support`（`IsDuplicate` / `NewID` / `UserID`）。
+
+命名对照：表 `system_notice` → Model `SystemNotice` → 文件 `notice_controller.go`（文件名取表名去掉模块前缀，见 11 节）。
+
+### 15.2 Model
+
+```go
+// Package model 存放 system 模块的表映射。
+package model
+
+import (
+	baseEnums "eqray-go-starter/app/modules/base/enums"
+	"eqray-go-starter/app/modules/base/model"
+)
+
+// SystemXxxTable 是表名常量，Model 与 Repository 共用同一来源。
+const SystemXxxTable = "system_xxx"
+
+// SystemXxxModel 对应 system_xxx 表。
+type SystemXxxModel struct {
+	model.BaseModel
+	Name   string                     `db:"name" json:"name"`
+	Status baseEnums.CommonStatusEnum `db:"status" json:"status"`
+	Remark string                     `db:"remark" json:"remark"`
+}
+
+// TableName 显式声明表名，不依赖复数化推导（11 节）。
+func (m *SystemXxxModel) TableName() string {
+	return SystemXxxTable
+}
+```
+
+五条硬约束：
+
+1. 标签用 `db:"..."`（查询构造器按它映射列），**不写 `gorm:"..."`**；`gorm` 标签在本项目的查询构造器链路里不生效。
+2. 主键与外键用 `types.ID`，时间字段用 `types.DateTime`，不自建 ID 类型、不用裸 `time.Time`（8.4、6.1）。
+3. 审计字段靠嵌入 `model.BaseModel` 获得，**不要重复声明** `id` / `creator` / `created_at` / `updater` / `updated_at` / `deleted_at`。
+4. `deleted_key`（6.8(2) 的生成列，仅「删除后复用」的表才有）**不写进 Model**，数据库自己维护。
+5. 表名以常量导出，**Repository 引用该常量**而不是再写一遍字面量，避免改表名漏改一处。
+
+`status` 字段不单独定义枚举，直接复用 base 的公共启停枚举（11.1）：
+
+```go
+Status baseEnums.CommonStatusEnum `db:"status" json:"status"` // 0 禁用 / 1 启用
+```
+
+只有 `xxx` 表确实存在专属业务枚举（如 `xxx_type`）时，才在 `app/modules/system/enums/` 下新增文件，按 11.1 实现 `String()` 与 `IsValid()`，命名形如 `XxxTypeEnum` / `XxxTypeBuiltin`。
+
+### 15.3 Repository
+
+```go
+// Package repository 存放 system 模块的数据访问实现，只操作本模块的表。
+package repository
+
+import (
+	"context"
+
+	"eqray-go-starter/app/facades"
+	baseErrs "eqray-go-starter/app/modules/base/errs"
+	"eqray-go-starter/app/modules/base/support"
+	"eqray-go-starter/app/modules/base/types"
+	systemErrs "eqray-go-starter/app/modules/system/errs"
+	"eqray-go-starter/app/modules/system/model"
+)
+
+const xxxTable = model.SystemXxxModelTable
+
+// XxxRepository 是 system_xxx 表的仓储。
+type XxxRepository struct{}
+
+func NewXxxRepository() *XxxRepository {
+	return &XxxRepository{}
+}
+
+// Paginate 按关键字分页，只查未软删的数据。
+// pageSize 由 Controller 的 param.Page.Normalize 保证落在 1 ~ 200（docs 8.2）。
+func (r *XxxRepository) Paginate(ctx context.Context, pageNo, pageSize int, keyword string) ([]model.SystemXxxModel, int64, error) {
+	list := make([]model.SystemXxxModel, 0)
+	var total int64
+
+	query := facades.DB().WithContext(ctx).Table(xxxTable).WhereNull("deleted_at")
+	if keyword != "" {
+		query = query.WhereLike("name", "%"+keyword+"%")
+	}
+
+	if err := query.OrderByDesc("id").Paginate(pageNo, pageSize, &list, &total); err != nil {
+		return nil, 0, err
+	}
+
+	return list, total, nil
+}
+
+// Find 按主键查询未软删的记录；未命中返回 (nil, nil)，由 Service 决定是否抛业务异常。
+func (r *XxxRepository) Find(ctx context.Context, id types.ID) (*model.SystemXxxModel, error) {
+	var m model.SystemXxxModel
+
+	if err := facades.DB().WithContext(ctx).Table(xxxTable).
+		Where("id", id).
+		WhereNull("deleted_at").
+		First(&m); err != nil {
+		return nil, err
+	}
+
+	if m.ID == 0 {
+		return nil, nil
+	}
+
+	return &m, nil
+}
+
+// Create 插入一条记录，主键与审计字段由 Base.FillCreate 填充。
+func (r *XxxRepository) Create(ctx context.Context, m *model.SystemXxxModel) error {
+	m.FillCreate(ctx)
+
+	_, err := facades.DB().WithContext(ctx).Table(xxxTable).Insert(map[string]any{
+		"id":         m.ID,
+		"name":       m.Name,
+		"status":     m.Status,
+		"remark":     m.Remark,
+		"creator":    m.Creator,
+		"created_at": m.CreatedAt,
+		"updater":    m.Updater,
+		"updated_at": m.UpdatedAt,
+	})
+	if err != nil && support.IsDuplicate(err) {
+		return baseErrs.New(systemErrs.SystemXxxNameExists, m.Name)
+	}
+
+	return err
+}
+
+// Update 全量更新业务字段与审计字段。
+func (r *XxxRepository) Update(ctx context.Context, m *model.SystemXxxModel) error {
+	m.FillUpdate(ctx)
+
+	_, err := facades.DB().WithContext(ctx).Table(xxxTable).
+		Where("id", m.ID).
+		WhereNull("deleted_at").
+		Update(map[string]any{
+			"name":       m.Name,
+			"status":     m.Status,
+			"remark":     m.Remark,
+			"updater":    m.Updater,
+			"updated_at": m.UpdatedAt,
+		})
+	if err != nil && support.IsDuplicate(err) {
+		return baseErrs.New(systemErrs.SystemXxxNameExists, m.Name)
+	}
+
+	return err
+}
+
+// Delete 软删除：只写 deleted_at，不物理删除。
+func (r *XxxRepository) Delete(ctx context.Context, m *model.SystemXxxModel) error {
+	m.FillUpdate(ctx)
+
+	res, err := facades.DB().WithContext(ctx).Table(xxxTable).
+		Where("id", m.ID).
+		WhereNull("deleted_at").
+		Update(map[string]any{
+			"deleted_at": types.Now(),
+			"updater":    m.Updater,
+			"updated_at": m.UpdatedAt,
+		})
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected == 0 {
+		return baseErrs.New(systemErrs.SystemXxxNotExists, m.ID)
+	}
+
+	return nil
+}
+```
+
+七条铁律：
+
+1. **写操作用 `map[string]any`，不用结构体**。构造器把结构体转列时会跳过零值字段，`status=0`、空 `remark` 这类合法值会被静默吞掉。
+2. **软删除靠显式 `WhereNull("deleted_at")` + 写 `deleted_at`**，不依赖 GORM 软删除；构造器不会自动加这个条件。
+3. **不触发 GORM hook**，所以 `FillCreate` / `FillUpdate` 必须在写之前显式调用，否则审计字段为空。
+4. **不开事务**（5.3）。需要事务时由 Service 用 `facades.DB().Transaction(func(tx contractsdb.Tx) error { ... })` 开启，并把 `tx` 作为参数传进 Repository 的重载方法。
+5. **唯一键冲突用 `support.IsDuplicate` 判定**：helper 已在 `app/modules/base/support/duplicate.go`，判断 MySQL `1062` 后转成与该字段「已存在」相同的业务错误码，禁止把驱动原始错误透传给前端（6.8(5)）。
+6. **分页只接受 1 ~ 200**：`pageSize` 的校验放在 Controller 的 `param.Page.Normalize`，Repository 直接 `Paginate`，不为 `-1` 准备分支（8.2）。
+7. **`RowsAffected == 0` 只在软删除时判定「不存在」**。`Update` 不能据此判断：MySQL 在字段值未变化时同样返回 0 行，会把「重复提交同一份数据」误报成记录不存在。
+
+### 15.4 Service
+
+```go
+// Package service 存放 system 模块的业务逻辑，事务只在这一层开启。
+package service
+
+import (
+	"context"
+	"strings"
+
+	baseEnums "eqray-go-starter/app/modules/base/enums"
+	baseErrs "eqray-go-starter/app/modules/base/errs"
+	"eqray-go-starter/app/modules/base/types"
+	systemErrs "eqray-go-starter/app/modules/system/errs"
+	"eqray-go-starter/app/modules/system/model"
+	"eqray-go-starter/app/modules/system/repository"
+)
+
+// XxxService 是 system_xxx 的业务入口。
+// 直接持有具体仓储类型；等真要写单测时，再在测试文件就近定义小接口（5.3）。
+type XxxService struct {
+	repo *repository.XxxRepository
+}
+
+// NewXxxService 构造 Service。
+func NewXxxService() *XxxService {
+	return &XxxService{repo: repository.NewXxxRepository()}
+}
+
+// Page 分页查询。
+func (s *XxxService) Page(ctx context.Context, pageNo, pageSize int, keyword string) ([]model.SystemXxxModel, int64, error) {
+	return s.repo.Paginate(ctx, pageNo, pageSize, keyword)
+}
+
+// Detail 查询单条，不存在时抛业务异常。
+func (s *XxxService) Detail(ctx context.Context, id types.ID) (*model.SystemXxxModel, error) {
+	m, err := s.repo.Find(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, baseErrs.New(systemErrs.SystemXxxNotExists, id)
+	}
+	return m, nil
+}
+
+// Create 新建一条记录。
+func (s *XxxService) Create(ctx context.Context, name string, status baseEnums.CommonStatusEnum, remark string) (*model.SystemXxxModel, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, baseErrs.New(systemErrs.SystemXxxNameEmpty)
+	}
+	if !status.IsValid() {
+		return nil, baseErrs.WithMsg(baseErrs.BadRequest, "状态取值不合法")
+	}
+
+	m := &model.SystemXxxModel{Name: name, Status: status, Remark: remark}
+	if err := s.repo.Create(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+```
+
+约定：
+
+- 错误一律 `return nil, baseErrs.New(...)` / `baseErrs.WithMsg(...)` 抛出，**Controller 不写业务判断**；业务错误码常量来自本模块的 `systemErrs`，两者在文件里以 `baseErrs` / `systemErrs` 区分（11.2）。
+- 不出现 `log.Create(...)`、不生成 `trace_id`、不赋值审计字段（6.9）。
+- 直接持有具体仓储类型，**不预抽 interface**。等确实需要 mock 时，再由测试文件就近定义小接口并把字段改成该接口（5.3），避免为「将来可能的测试」提前付出抽象成本。
+
+### 15.5 Request
+
+```go
+// Package request 存放 system 模块的请求参数与校验规则。
+package request
+
+import (
+	"github.com/goravel/framework/contracts/http"
+
+	baseEnums "eqray-go-starter/app/modules/base/enums"
+)
+
+// XxxCreateRequest 创建入参。
+type XxxCreateRequest struct {
+	Name   string                     `form:"name" json:"name"`
+	Status baseEnums.CommonStatusEnum `form:"status" json:"status"`
+	Remark string                     `form:"remark" json:"remark"`
+}
+
+// Rules 由 Controller 交给 param.Bind 执行。
+func (r *XxxCreateRequest) Rules(ctx http.Context) map[string]any {
+	return map[string]any{
+		"name":   "required|max:64",
+		"status": "required|integer|in:0,1",
+		"remark": "max:500",
+	}
+}
+
+// Messages 覆盖框架默认的英文提示，保证接口文案统一为中文。
+func (r *XxxCreateRequest) Messages(ctx http.Context) map[string]string {
+	return map[string]string{
+		"name.required":   "名称不能为空",
+		"name.max":        "名称不能超过 64 个字符",
+		"status.required": "状态不能为空",
+		"status.integer":  "状态必须为整数",
+		"status.in":       "状态取值不合法",
+		"remark.max":      "备注不能超过 500 个字符",
+	}
+}
+```
+
+- 更新入参单独一个结构体（`XxxUpdateRequest`），**字段同样必填**，保持 PUT 的幂等语义，不做部分更新。
+- 字段类型用枚举（状态字段为 `baseEnums.CommonStatusEnum`），不用裸 `int8`；取值范围仍由 `Rules` 与 Service 的 `IsValid()` 双重把关（11.1）。
+- `Messages` 是可选的：实现了 `MessagesProvider` 就会被 `param.Bind` 自动带上，没实现则回退框架默认文案。
+
+### 15.6 Controller
+
+```go
+// Package controller 存放 system 模块的控制器，只做取参、调 Service、出响应。
+package controller
+
+import (
+	"github.com/goravel/framework/contracts/http"
+
+	"eqray-go-starter/app/modules/base/param"
+	"eqray-go-starter/app/modules/base/result"
+	"eqray-go-starter/app/modules/system/request"
+	"eqray-go-starter/app/modules/system/service"
+)
+
+// XxxController 提供 system_xxx 的 CRUD 接口。
+type XxxController struct {
+	service *service.XxxService
+}
+
+func NewXxxController() *XxxController {
+	return &XxxController{service: service.NewXxxService()}
+}
+
+// Index GET /api/v1/system/xxxs
+func (c *XxxController) Index(ctx http.Context) http.Response {
+	var page param.Page
+	page.PageNo = ctx.Request().QueryInt("pageNo", 1)
+	page.PageSize = ctx.Request().QueryInt("pageSize", param.DefaultPageSize)
+	if err := page.Normalize(); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, total, err := c.service.Page(ctx.Context(), page.PageNo, page.PageSize, ctx.Request().Query("keyword"))
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// Store POST /api/v1/system/xxxs
+func (c *XxxController) Store(ctx http.Context) http.Response {
+	var req request.XxxCreateRequest
+	if err := param.Bind(ctx, &req); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	m, err := c.service.Create(ctx.Context(), req.Name, req.Status, req.Remark)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, m)
+}
+
+// Show GET /api/v1/system/xxxs/{id}
+func (c *XxxController) Show(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	m, err := c.service.Detail(ctx.Context(), id)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, m)
+}
+```
+
+- 所有出口统一走 `result.Success` / `result.Page` / `result.Fail`，Controller 里**不出现 `ctx.Response()` 与 `response.*`**；HTTP 状态码始终 200（8.1），成功响应固定带 `data`，失败响应不带 `data`。
+- **Controller 内不写 `fail`、`pathID`、响应拼装**：响应输出由 `base/result` 提供、参数与路径解析由 `base/param` 提供，避免每个模块复制一份、也避免包内重名冲突。
+- 校验与绑定合并为 `param.Bind`，顺序固定为「先校验、再绑定」，两步失败都返回 `400`。
+
+### 15.7 Route
+
+```go
+func Register() {
+	xxxController := controller.NewXxxController()
+
+	facades.Route().Prefix("/api/v1/system").Group(func(r route.Router) {
+		r.Get("/xxxs", xxxController.Index)
+		r.Post("/xxxs", xxxController.Store)
+		r.Get("/xxxs/{id}", xxxController.Show)
+		r.Put("/xxxs/{id}", xxxController.Update)
+		r.Delete("/xxxs/{id}", xxxController.Destroy)
+	})
+}
+```
+
+后台路由追加 `.Middleware(operate("模块名", "操作名"))` 声明操作语义（9.5），并挂到 `permission` 组内；会员端路由挂 `member_auth`，不做接口级权限控制。
+
+### 15.8 错误码
+
+```go
+// app/modules/system/errs/system_error.go
+package errs
+
+import baseErrs "eqray-go-starter/app/modules/base/errs"
+
+var (
+	SystemXxxNotExists  = baseErrs.ErrorCode{Code: 1_002_0XX_001, Msg: "xx【%v】不存在"}
+	SystemXxxNameEmpty  = baseErrs.ErrorCode{Code: 1_002_0XX_002, Msg: "名称不能为空"}
+	SystemXxxNameExists = baseErrs.ErrorCode{Code: 1_002_0XX_003, Msg: "名称【%s】已存在"}
+)
+```
+
+- 业务错误码一律落在**本模块**的 `errs` 包，base 只保留 0 ~ 999 的系统错误码（8.3(3)）；跨模块阅读时靠 `systemErrs` / `baseErrs` 别名区分。
+- `1_002_0XX_001` 中的 `0XX` 换成该实体的子模块段（8.3(2) 已分配 001 ~ 008，新实体顺延）。
+- 同一错误码的「预查重」与「1062 兜底」必须共用**同一个**常量（6.8(5)）。
+
+### 15.9 迁移
+
+无唯一键表的常规写法（Schema Builder）：
+
+```go
+package migrations
+
+import (
+	"github.com/goravel/framework/contracts/database/schema"
+
+	"eqray-go-starter/app/facades"
+)
+
+type M20261017000002CreateSystemXxxTable struct{}
+
+func (r *M20261017000002CreateSystemXxxTable) Signature() string {
+	return "20261017000002_create_system_xxx_table"
+}
+
+func (r *M20261017000002CreateSystemXxxTable) Up() error {
+	if facades.Schema().HasTable("system_xxx") {
+		return nil
+	}
+
+	return facades.Schema().Create("system_xxx", func(table schema.Blueprint) {
+		table.BigInteger("id").Comment("主键") // 不用自增，应用侧雪花 ID
+		table.String("name", 64).Comment("名称")
+		table.TinyInteger("status").Default(1).Comment("状态：0 禁用 / 1 启用")
+		table.String("remark", 500).Default("").Comment("备注")
+		table.String("creator", 64).Default("").Comment("创建人")
+		table.DateTime("created_at").Nullable().Comment("创建时间")
+		table.String("updater", 64).Default("").Comment("更新人")
+		table.DateTime("updated_at").Nullable().Comment("更新时间")
+		table.DateTime("deleted_at").Nullable().Comment("删除时间")
+
+		table.Primary("id")
+		table.Index("created_at")
+
+		table.Comment("xxx 表")
+	})
+}
+
+func (r *M20261017000002CreateSystemXxxTable) Down() error {
+	return facades.Schema().DropIfExists("system_xxx")
+}
+```
+
+需要「删除后复用」的唯一键表必须用原生 SQL 建表（生成列 `deleted_key` 只能出现在 DDL 里，6.8(2)）：
+
+```go
+func (r *M20261017000002CreateSystemXxxTable) Up() error {
+	if facades.Schema().HasTable("system_xxx") {
+		return nil
+	}
+
+	return facades.DB().Statement(`
+CREATE TABLE system_xxx (
+  id           bigint       NOT NULL COMMENT '主键',
+  name         varchar(64)  NOT NULL COMMENT '名称',
+  status       tinyint      NOT NULL DEFAULT 1 COMMENT '状态：0 禁用 / 1 启用',
+  remark       varchar(500) NOT NULL DEFAULT '' COMMENT '备注',
+  creator      varchar(64)  NOT NULL DEFAULT '' COMMENT '创建人',
+  created_at   datetime     NULL COMMENT '创建时间',
+  updater      varchar(64)  NOT NULL DEFAULT '' COMMENT '更新人',
+  updated_at   datetime     NULL COMMENT '更新时间',
+  deleted_at   datetime     NULL COMMENT '删除时间',
+  deleted_key  datetime     GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED COMMENT '软删除让位生成列',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_name (name, deleted_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='xxx 表'`)
+}
+
+func (r *M20261017000002CreateSystemXxxTable) Down() error {
+	return facades.Schema().DropIfExists("system_xxx")
+}
+```
+
+- `HasTable` 判断保留，保证重复执行幂等；`Down()` 必须 `DropIfExists`（6.7）。
+- 建表顺序按 6.7 的依赖顺序插入，不要追加到文件末尾就算完成。
+- 两条分支按「删除后是否需要复用同名」选择，而不是按有没有唯一键：**不复用**的唯一键直接建在业务键上，Schema Builder 的 `table.Unique("uk_xxx", []string{"col"})` 或原生 SQL 均可（`system_users` 用的是后者）；**复用**的唯一键才用原生 SQL + `deleted_key`。
+
+### 15.10 与正文的关系
+
+本章是 6.1、6.6、6.8(2)、6.9、8.1、8.2、8.4、11.1 的可执行版本：正文写规则，本章给落地写法。以下口径以本章代码为准：
+
+| 主题 | 现行口径 | 落点 |
+|---|---|---|
+| 审计字段填充 | 构造器不触发钩子，Repository 写入前显式调 `FillCreate` / `FillUpdate` | 6.1、6.9、15.2 |
+| 软删除 | 读写两侧都显式处理：查询带 `WhereNull("deleted_at")`，删除写 `deleted_at` | 6.6、6.9、15.3 |
+| 写库形态 | 写用 `map[string]any` 显式列名，规避零值跳过；读用结构体按 `db` tag 映射 | 6.9、15.3 |
+| Model 标签 | 只用 `db` tag，不用 `gorm` tag | 8.4、11.1、15.2 |
+| 表名 | Model 导出 `XxxTable` 常量，Repository 引用它，不再重复字面量 | 6.7、15.2、15.3 |
+| 业务错误码 | 落在**模块** `errs` 包，base 只放系统错误码 | 8.3(3)、11.2、15.8 |
+| 响应结构 | 成功固定带 `data`（可为 `null`），失败省略 `data` | 8.1、15.6 |
+| 分页 | `pageSize` 只接受 1 ~ 200，越界返回 `400`；分页接口不给 `-1` 开口子 | 8.2、15.3、15.6 |
+
+后续若正文再出现与本章代码冲突的表述，以本章为准并同步回改正文。
+
+### 15.11 新增实体自检清单
+
+- [ ] Model 嵌入 `Base`，字段全带 `db` tag，主键/外键用 `types.ID`，表名以常量导出
+- [ ] 状态类字段用 `enums` 里的自定义类型，不写裸 `int8`
+- [ ] Repository 读用结构体、写用 `map`，所有查询带 `WhereNull("deleted_at")`
+- [ ] 写前调 `FillCreate` / `FillUpdate`，Service 不碰审计字段
+- [ ] 分页接口校验 `pageSize` 为 1 ~ 200，越界返回 `400`，不透传 `-1`
+- [ ] 唯一键表的写入用 `support.IsDuplicate` 捕获 1062，与预查重共用同一错误码
+- [ ] 软删除用 `RowsAffected` 判定「不存在」；普通更新不用它判断
+- [ ] Request 有独立 `Rules` 与中文 `Messages`，更新入参字段同样必填
+- [ ] Service 直接持有具体仓储类型，不预抽 interface（需要 mock 时再由测试就近定义）
+- [ ] Controller 只做取参/调 Service/出响应，错误走 `result.Fail`
+- [ ] 路由挂到正确前缀与中间件组，后台路由声明操作语义与权限标识
+- [ ] 错误码落在**本模块** `errs` 文件，编码段与该实体子模块一致
+- [ ] 迁移有 `HasTable` 幂等判断与 `DropIfExists` 的 `Down()`；需要复用的唯一键表用原生 SQL + `deleted_key`，其余唯一键直接建在业务键上
+- [ ] 表注释与每个字段的 `COMMENT` 都写了，状态类字段注明取值含义

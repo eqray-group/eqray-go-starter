@@ -5,7 +5,6 @@ import (
 	"github.com/goravel/framework/support"
 
 	"eqray-go-starter/app/facades"
-	"eqray-go-starter/app/http/controllers"
 )
 
 func Web() {
@@ -16,7 +15,4 @@ func Web() {
 	})
 
 	facades.Route().Static("public", "./public")
-
-	userController := controllers.NewUserController()
-	facades.Route().Get("/users", userController.Index)
 }

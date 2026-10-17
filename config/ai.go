@@ -3,7 +3,7 @@ package config
 import (
 	"eqray-go-starter/app/facades"
 	"github.com/goravel/framework/contracts/ai"
-	openaifacades "github.com/goravel/openai/facades"
+	openaiFacades "github.com/goravel/openai/facades"
 )
 
 func init() {
@@ -39,7 +39,7 @@ func init() {
 				"failover": map[string][]string{},
 				"url":      config.Env("OPENAI_BASE_URL", ""),
 				"via": func() (ai.Provider, error) {
-					return openaifacades.OpenAI("openai")
+					return openaiFacades.OpenAI("openai")
 				},
 			},
 		},

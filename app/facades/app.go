@@ -1,10 +1,10 @@
 package facades
 
 import (
-	contractsfoundation "github.com/goravel/framework/contracts/foundation"
+	contractsFoundation "github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/foundation"
 )
 
-func App() contractsfoundation.Application {
+func App() contractsFoundation.Application {
 	return foundation.App
 }

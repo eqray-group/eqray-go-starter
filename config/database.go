@@ -2,30 +2,42 @@ package config
 
 import (
 	"eqray-go-starter/app/facades"
+
 	"github.com/goravel/framework/contracts/database/driver"
-	postgresfacades "github.com/goravel/postgres/facades"
+	mysqlFacades "github.com/goravel/mysql/facades"
 )
 
 func init() {
 	config := facades.Config()
 	config.Add("database", map[string]any{
 		// Default database connection name
-		"default": config.Env("DB_CONNECTION"),
+		"default": config.Env("DB_CONNECTION", "mysql"),
 		// Database connections
 		"connections": map[string]any{
-			"postgres": map[string]any{
-				"host":     config.Env("DB_HOST"),
-				"port":     config.Env("DB_PORT"),
+			// MySQL 8.0：字符集 utf8mb4、排序规则 utf8mb4_unicode_ci，见 docs 第 2 节
+			"mysql": map[string]any{
+				"host":     config.Env("DB_HOST", "127.0.0.1"),
+				"port":     config.Env("DB_PORT", "3306"),
 				"database": config.Env("DB_DATABASE"),
 				"username": config.Env("DB_USERNAME"),
 				"password": config.Env("DB_PASSWORD"),
-				"sslmode":  "disable",
+				"charset":  "utf8mb4",
+				"loc":      "Local",
 				"singular": false,
 				"prefix":   "",
-				"schema":   config.Env("DB_SCHEMA", "public"),
 				"via": func() (driver.Driver, error) {
-					return postgresfacades.Postgres("postgres")
+					return mysqlFacades.Mysql("mysql")
 				},
+			},
+		},
+		// Redis 连接：缓存默认走 redis store，令牌就存在这里（docs 9.2）。
+		// 配置项名固定为 database.redis.<connection>.*，由 goravel/redis 读取。
+		"redis": map[string]any{
+			"default": map[string]any{
+				"host":     config.Env("REDIS_HOST", "127.0.0.1"),
+				"port":     config.Env("REDIS_PORT", "6379"),
+				"password": config.Env("REDIS_PASSWORD", ""),
+				"database": config.Env("REDIS_DB", 0),
 			},
 		},
 		// Pool configuration

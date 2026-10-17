@@ -1,99 +1,107 @@
-<div align="center">
+# eqray-go-starter
 
-<img src="https://www.goravel.dev/logo.png?v=1.14.x" width="300" alt="Logo">
+基于 [Goravel](https://www.goravel.dev) 的后台管理脚手架：Go 后端提供 JWT 双令牌认证与 RBAC 权限，Vue 3 前端提供用户、角色、菜单管理，开箱即用。
 
-[![Doc](https://pkg.go.dev/badge/github.com/goravel/framework)](https://pkg.go.dev/github.com/goravel/framework)
-[![Go](https://img.shields.io/github/go-mod/go-version/goravel/framework)](https://go.dev/)
-[![Release](https://img.shields.io/github/release/goravel/framework.svg)](https://github.com/goravel/framework/releases)
-[![Test](https://github.com/goravel/framework/actions/workflows/test.yml/badge.svg)](https://github.com/goravel/framework/actions)
-[![Report Card](https://goreportcard.com/badge/github.com/goravel/framework)](https://goreportcard.com/report/github.com/goravel/framework)
-[![Codecov](https://codecov.io/gh/goravel/framework/branch/master/graph/badge.svg)](https://codecov.io/gh/goravel/framework)
-![License](https://img.shields.io/github/license/goravel/framework)
+## 技术栈
 
-</div>
+- 后端：Go 1.25、Goravel 1.18、Gin、MySQL 8、Redis
+- 前端：Vue 3、Vite、TypeScript、Element Plus、Pinia（`ui/`，基于 Art Design Pro）
 
-English | [中文](./README_zh.md)
+## 功能
 
-## About Goravel
+- 账号密码登录 + 图形验证码，访问令牌 / 刷新令牌双令牌
+- 用户、角色、菜单的增删改查
+- RBAC：角色授权菜单、用户分配角色、接口级权限校验
+- 内置超管角色 `SUPER_ADMIN`，拥有全部菜单与接口权限
+- 后端动态路由（`VITE_ACCESS_MODE=backend`）：按当前用户权限返回菜单树
+- 统一响应结构、业务错误码、参数校验、分页
 
-Goravel is a full-featured, scalable web application framework that provides a starting scaffold to help Gophers quickly build their applications.
+## 目录结构
 
-The framework style is consistent with [Laravel](https://laravel.com/), so PHP developers don’t need to learn a new framework and can still enjoy playing around with Golang, in tribute to Laravel!
+```
+app/modules/
+  base/     # 公共能力：认证、响应、错误码、参数、枚举、类型
+  system/   # 系统模块：登录认证、用户、角色、菜单
+bootstrap/  # 应用启动、迁移与 Provider 注册
+config/     # 配置
+database/   # 数据库迁移（建表 + 初始化数据）
+routes/     # 路由入口
+docs/       # 设计文档
+ui/         # 前端工程
+```
 
-We welcome stars, PRs, and issues!
+## 快速开始
 
-## Documentation
+### 环境要求
 
-Online documentation [https://www.goravel.dev](https://www.goravel.dev)
+Go 1.25+、MySQL 8、Redis 6+、Node 20.19+、pnpm 8+
 
-Example [https://github.com/goravel/example](https://github.com/goravel/example)
+### 1. 配置
 
-> To optimize the documentation, please submit a PR to the documentation
-> repository [https://github.com/goravel/docs](https://github.com/goravel/docs)
+```bash
+cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+# 修改 DB_* 与 REDIS_*，然后生成 APP_KEY
+go run . artisan key:generate
+```
 
-## Main Features
+### 2. 初始化数据库
 
-| Module Name | Description |
-|-------------|-------------|
-| [Artisan Console](https://www.goravel.dev/digging-deeper/artisan-console.html) | CLI command-line interface for application management and automation |
-| [Authentication](https://www.goravel.dev/security/authentication.html) | User identity verification with JWT and Session drivers |
-| [Authorization](https://www.goravel.dev/security/authorization.html) | Permission-based access control using policies and gates |
-| [Cache](https://www.goravel.dev/digging-deeper/cache.html) | Store and retrieve data using memory, Redis, or custom drivers |
-| [Carbon](https://www.goravel.dev/digging-deeper/helpers.html) | Helper functions for date and time manipulation |
-| [Config](https://www.goravel.dev/getting-started/configuration.html) | Application configuration management from files and environment |
-| [Crypt](https://www.goravel.dev/security/encryption.html) | Secure data encryption and decryption utilities |
-| [DB](https://www.goravel.dev/database/getting-started.html) | Database query builder |
-| [Event](https://www.goravel.dev/digging-deeper/event.html) | Application event dispatching and listening system |
-| [Factory](https://www.goravel.dev/orm/factories.html) | Generate fake model data for testing purposes |
-| [FileStorage](https://www.goravel.dev/digging-deeper/filesystem.html) | File upload, download, and storage across multiple drivers |
-| [Grpc](https://www.goravel.dev/the-basics/grpc.html) | High-performance gRPC server and client implementation |
-| [Hash](https://www.goravel.dev/security/hashing.html) | Secure password hashing |
-| [Http](https://www.goravel.dev/the-basics/routing.html) | HTTP routing, controllers, and middleware management |
-| [Http Client](https://www.goravel.dev/digging-deeper/http-client.html) | Make HTTP requests to external APIs and services |
-| [Localization](https://www.goravel.dev/digging-deeper/localization.html) | Multi-language translation and locale management |
-| [Logger](https://www.goravel.dev/the-basics/logging.html) | Application logging to files, console, or external services |
-| [Mail](https://www.goravel.dev/digging-deeper/mail.html) | Send emails via SMTP or queue-based delivery |
-| [Mock](https://www.goravel.dev/testing/mock.html) | Create test mocks for facades and dependencies |
-| [Migrate](https://www.goravel.dev/database/migrations.html) | Version control for database schema changes |
-| [Orm](https://www.goravel.dev/orm/getting-started.html) | Elegant Orm implementation for database operations |
-| [Package Development](https://www.goravel.dev/digging-deeper/package-development.html) | Build reusable packages to extend framework functionality |
-| [Process](https://www.goravel.dev/digging-deeper/process.html) | An expressive and elegant API around Go's standard os/exec package |
-| [Queue](https://www.goravel.dev/digging-deeper/queues.html) | Defer time-consuming tasks to background job processing |
-| [Seeder](https://www.goravel.dev/database/seeding.html) | Populate database tables with test or initial data |
-| [Session](https://www.goravel.dev/the-basics/session.html) | Manage user session data across HTTP requests |
-| [Task Scheduling](https://www.goravel.dev/digging-deeper/task-scheduling.html) | Schedule recurring tasks using cron-like expressions |
-| [Testing](https://www.goravel.dev/testing/getting-started.html) | HTTP testing, mocking, and assertion utilities |
-| [Validation](https://www.goravel.dev/the-basics/validation.html) | Validate incoming request data using rules |
-| [View](https://www.goravel.dev/the-basics/views.html) | Template rendering engine for HTML responses |
+```bash
+go run . artisan migrate
+# 或使用仓库自带脚本：./artisan migrate（Windows: artisan.bat migrate）
+```
 
-## Compare With Laravel
+### 3. 启动后端
 
-[For Detail](https://www.goravel.dev/prologue/compare-with-laravel.html)
+```bash
+go run .
+# http://127.0.0.1:3000
+```
 
-## Roadmap
+### 4. 启动前端
 
-[For Detail](https://github.com/goravel/goravel/issues?q=is%3Aissue+is%3Aopen)
+```bash
+cd ui
+pnpm install
+pnpm dev
+# http://127.0.0.1:3006，开发环境代理到 3000
+```
 
-## Excellent Extend Packages
+## 默认账号
 
-[For Detail](https://www.goravel.dev/getting-started/packages.html)
+| 账号 | 密码 | 说明 |
+|---|---|---|
+| `admin` | `admin123` | 初始管理员，仅用于本地初始化，上线前必须修改 |
 
-## Contributors
+内置超管角色标识为 `SUPER_ADMIN`，权限校验命中后直接放行。
 
-This project exists thanks to all the people who contribute, to participate in the contribution, please see [Contribution Guide](https://www.goravel.dev/prologue/contributions.html).
+## 主要接口
 
-## Sponsor
+统一前缀 `/api/v1/system`，除登录、验证码、刷新、登出外均需携带访问令牌。
 
-Better development of the project is inseparable from your support, reward us by [Open Collective](https://opencollective.com/goravel).
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/auth/captcha` | 图形验证码 |
+| POST | `/auth/login` | 登录 |
+| POST | `/auth/refresh` | 刷新令牌 |
+| POST | `/auth/logout` | 登出 |
+| GET | `/profile` | 当前用户信息、角色与权限 |
+| GET | `/menus/routes` | 当前用户的动态路由菜单 |
+| GET/POST | `/users` | 用户列表 / 新增 |
+| GET/PUT/DELETE | `/users/{id}` | 用户详情 / 编辑 / 删除 |
+| GET/PUT | `/users/{id}/roles` | 查询 / 分配用户角色 |
+| GET/POST | `/roles` | 角色列表 / 新增 |
+| GET/PUT/DELETE | `/roles/{id}` | 角色详情 / 编辑 / 删除 |
+| GET/PUT | `/roles/{id}/menus` | 查询 / 分配角色菜单 |
+| GET/POST | `/menus` | 菜单树 / 新增 |
+| GET/PUT/DELETE | `/menus/{id}` | 菜单详情 / 编辑 / 删除 |
 
-<p align="left"><img src="https://www.goravel.dev/reward.png" width="200"></p>
+接口权限标识形如 `system:user:create`，与 `system_menu.permission` 一一对应。
 
-## Group
+## 文档
 
-Welcome more discussion in Discord.
-
-[https://discord.gg/cFc5csczzS](https://discord.gg/cFc5csczzS)
+详细设计（分层约定、权限模型、编码规范、开发模板）见 [docs/framework-design.md](docs/framework-design.md)。
 
 ## License
 
-The Goravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+[MIT](LICENSE)
