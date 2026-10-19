@@ -1,18 +1,13 @@
 package routes
 
 import (
-	"github.com/goravel/framework/contracts/http"
-	"github.com/goravel/framework/support"
-
 	"eqray-go-starter/app/facades"
+
+	"github.com/goravel/framework/contracts/http"
 )
 
 func Web() {
 	facades.Route().Get("/", func(ctx http.Context) http.Response {
-		return ctx.Response().View().Make("welcome.tmpl", map[string]any{
-			"version": support.Version,
-		})
+		return ctx.Response().Success().String("api is running")
 	})
-
-	facades.Route().Static("public", "./public")
 }
