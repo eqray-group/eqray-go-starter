@@ -12,7 +12,6 @@ import (
 const SystemRoleTable = "system_role"
 
 // SystemRoleModel 对应 system_role 表（docs 6.3）。
-// deleted_key 是数据库生成列，按约定不写进 Model。
 type SystemRoleModel struct {
 	model.BaseModel
 	Name   string                     `db:"name" json:"name"`

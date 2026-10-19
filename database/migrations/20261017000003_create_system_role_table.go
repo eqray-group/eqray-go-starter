@@ -15,7 +15,7 @@ func (r *M20261017000003CreateSystemRoleTable) Signature() string {
 }
 
 // Up 建 system_role 表并写入内置角色 SUPER_ADMIN（docs 6.3）。
-// 角色编码允许「删除后复用」，因此唯一键带上 deleted_key 生成列。
+// 角色编码唯一；角色软删除后编码仍被占用，避免与历史数据混淆。
 func (r *M20261017000003CreateSystemRoleTable) Up() error {
 	if facades.Schema().HasTable("system_role") {
 		return nil
@@ -35,9 +35,8 @@ CREATE TABLE system_role (
   updater      varchar(64)  NOT NULL DEFAULT '' COMMENT '更新人',
   updated_at   datetime     NULL COMMENT '更新时间',
   deleted_at   datetime     NULL COMMENT '删除时间',
-  deleted_key  datetime     GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED COMMENT '软删除让位生成列',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_code (code, deleted_key)
+  UNIQUE KEY uk_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表'`); err != nil {
 		return err
 	}

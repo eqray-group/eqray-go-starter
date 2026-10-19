@@ -18,18 +18,6 @@
             @keyup.enter="handleSubmit"
             style="margin-top: 25px"
           >
-            <ElFormItem prop="account">
-              <ElSelect v-model="formData.account" @change="setupAccount">
-                <ElOption
-                  v-for="account in accounts"
-                  :key="account.key"
-                  :label="account.label"
-                  :value="account.key"
-                >
-                  <span>{{ account.label }}</span>
-                </ElOption>
-              </ElSelect>
-            </ElFormItem>
             <ElFormItem prop="username">
               <ElInput
                 class="custom-height"
@@ -88,13 +76,6 @@
                 {{ $t('login.btnText') }}
               </ElButton>
             </div>
-
-            <div class="mt-5 text-sm text-gray-600">
-              <span>{{ $t('login.noAccount') }}</span>
-              <RouterLink class="text-theme" :to="{ name: 'Register' }">{{
-                $t('login.register')
-              }}</RouterLink>
-            </div>
           </ElForm>
         </div>
       </div>
@@ -120,26 +101,6 @@
     formKey.value++
   })
 
-  type AccountKey = 'admin'
-
-  export interface Account {
-    key: AccountKey
-    label: string
-    username: string
-    password: string
-    roles: string[]
-  }
-
-  const accounts = computed<Account[]>(() => [
-    {
-      key: 'admin',
-      label: t('login.roles.admin'),
-      username: 'admin',
-      password: 'admin123',
-      roles: ['SUPER_ADMIN']
-    }
-  ])
-
   const userStore = useUserStore()
   const router = useRouter()
   const route = useRoute()
@@ -150,7 +111,6 @@
   const captchaImage = ref('')
 
   const formData = reactive({
-    account: '',
     username: '',
     password: '',
     captchaId: '',
@@ -179,17 +139,8 @@
   }
 
   onMounted(() => {
-    setupAccount('admin')
     loadCaptcha()
   })
-
-  // 设置账号
-  const setupAccount = (key: AccountKey) => {
-    const selectedAccount = accounts.value.find((account: Account) => account.key === key)
-    formData.account = key
-    formData.username = selectedAccount?.username ?? ''
-    formData.password = selectedAccount?.password ?? ''
-  }
 
   // 登录
   const handleSubmit = async () => {
@@ -258,10 +209,4 @@
 
 <style scoped>
   @import './style.css';
-</style>
-
-<style lang="scss" scoped>
-  :deep(.el-select__wrapper) {
-    height: 40px !important;
-  }
 </style>

@@ -93,8 +93,248 @@ declare namespace Api {
       /** 雪花 ID，后端序列化为字符串 */
       userId: string
       userName: string
+      nickname?: string
       email: string
+      mobile?: string | null
+      /** 0 未知 / 1 男 / 2 女 */
+      sex?: number
       avatar?: string
+    }
+
+    /** 个人资料更新参数 */
+    interface ProfileUpdateParams {
+      nickname: string
+      email?: string
+      mobile?: string
+      sex: number
+      avatar?: string
+    }
+
+    /** 修改密码参数 */
+    interface ProfilePasswordParams {
+      oldPassword: string
+      newPassword: string
+    }
+  }
+
+  /** 基础设施类型 */
+  namespace Infra {
+    /** 参数配置 */
+    interface ConfigItem {
+      id: string
+      category: string
+      name: string
+      configKey: string
+      value: string
+      /** 1 系统内置 / 2 自定义 */
+      type: number
+      /** 0 否 / 1 是 */
+      visible: number
+      remark: string
+      creator?: string
+      createdAt?: string
+      updatedAt?: string
+    }
+
+    /** 参数配置列表 */
+    interface ConfigList {
+      list: ConfigItem[]
+      total: number
+    }
+
+    /** 参数配置搜索参数 */
+    interface ConfigSearchParams {
+      category?: string
+      keyword?: string
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 参数配置新增参数 */
+    interface ConfigCreateParams {
+      category: string
+      name: string
+      configKey: string
+      value: string
+      type: number
+      visible: number
+      remark?: string
+    }
+
+    /** 参数配置编辑参数，参数键与类型不可修改 */
+    type ConfigUpdateParams = Omit<ConfigCreateParams, 'configKey' | 'type'>
+
+    /** 文件记录 */
+    interface FileItem {
+      id: string
+      /** 原始文件名 */
+      name: string
+      /** 存储路径 */
+      path: string
+      /** 访问地址 */
+      url: string
+      /** MIME 类型 */
+      type: string
+      /** 文件大小（字节） */
+      size: number
+      createdAt: string
+    }
+
+    /** 文件列表 */
+    interface FileList {
+      list: FileItem[]
+      total: number
+    }
+
+    /** 文件搜索参数 */
+    interface FileSearchParams {
+      keyword?: string
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 文件配置 */
+    interface FileConfigItem {
+      id: string
+      name: string
+      /** 存储类型：local 本地磁盘 / s3 S3 兼容存储（MinIO、OSS、COS 等） */
+      storage: string
+      /** 1 主配置 / 0 普通 */
+      master: number
+      /** 存储配置 JSON */
+      config: string
+      createdAt?: string
+    }
+
+    /** 文件配置新增 / 编辑参数 */
+    interface FileConfigParams {
+      name: string
+      storage: string
+      master: number
+      config: string
+    }
+
+    /** 文件配置搜索参数 */
+    interface FileConfigSearchParams {
+      name?: string
+      storage?: string
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** API 访问日志 */
+    interface ApiAccessLogItem {
+      id: string
+      traceId: string
+      userId: string
+      userType: number
+      applicationName: string
+      requestMethod: string
+      requestUrl: string
+      requestParams: string
+      responseBody: string
+      userIp: string
+      userAgent: string
+      operateModule: string
+      operateName: string
+      beginAt: string
+      endAt: string
+      duration: number
+      resultCode: number
+      createdAt: string
+    }
+
+    /** API 访问日志列表 */
+    interface ApiAccessLogList {
+      list: ApiAccessLogItem[]
+      total: number
+    }
+
+    /** API 错误日志 */
+    interface ApiErrorLogItem {
+      id: string
+      traceId: string
+      userId: string
+      requestMethod: string
+      requestUrl: string
+      requestParams: string
+      userIp: string
+      userAgent: string
+      name: string
+      message: string
+      exceptionStack: string
+      processStatus: number
+      processTime?: string
+      createdAt: string
+    }
+
+    /** API 错误日志列表 */
+    interface ApiErrorLogList {
+      list: ApiErrorLogItem[]
+      total: number
+    }
+
+    /** API 日志搜索参数 */
+    interface ApiLogSearchParams {
+      requestUrl?: string
+      keyword?: string
+      resultCode?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 上传成功后的文件信息 */
+    interface UploadedFile {
+      /** 雪花 ID，后端序列化为字符串 */
+      id: string
+      /** 原始文件名 */
+      name: string
+      /** 可直接访问的地址 */
+      url: string
+      /** MIME 类型 */
+      type: string
+      /** 文件大小（字节） */
+      size: number
+    }
+  }
+
+  /** 控制台统计 */
+  namespace Dashboard {
+    /** 趋势数据点 */
+    interface TrendItem {
+      /** 月-日，如 10-19 */
+      date: string
+      count: number
+    }
+
+    /** 最近登录记录 */
+    interface LoginItem {
+      username: string
+      userIp: string
+      /** 0 失败 / 1 成功 */
+      result: number
+      createdAt: string
+    }
+
+    /** 控制台聚合数据 */
+    interface Overview {
+      counts: {
+        user: number
+        role: number
+        menu: number
+        file: number
+        fileSize: number
+        todayLogin: number
+        todayRequest: number
+        todayError: number
+      }
+      loginTrend: TrendItem[]
+      requestTrend: TrendItem[]
+      recentLogins: LoginItem[]
+      system: {
+        goVersion: string
+        serverTime: string
+      }
     }
   }
 
@@ -235,6 +475,165 @@ declare namespace Api {
       visible?: number
       keepAlive?: number
       alwaysShow?: number
+    }
+
+    /** 字典类型 */
+    interface DictTypeItem {
+      id: string
+      name: string
+      /** 字典类型编码，创建后不可修改 */
+      type: string
+      /** 0 禁用 / 1 启用 */
+      status: number
+      remark: string
+      createdAt: string
+      updatedAt: string
+    }
+
+    /** 字典类型列表 */
+    interface DictTypeList {
+      list: DictTypeItem[]
+      total: number
+    }
+
+    /** 字典类型搜索参数 */
+    interface DictTypeSearchParams {
+      name?: string
+      type?: string
+      status?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 新增 / 编辑字典类型参数 */
+    interface DictTypeSaveParams {
+      name: string
+      type: string
+      status: number
+      remark?: string
+    }
+
+    /** 字典数据 */
+    interface DictDataItem {
+      id: string
+      sort: number
+      label: string
+      value: string
+      dictType: string
+      /** 0 禁用 / 1 启用 */
+      status: number
+      /** default / primary / success / info / warning / danger */
+      colorType: string
+      cssClass: string
+      remark: string
+      createdAt: string
+      updatedAt: string
+    }
+
+    /** 字典数据列表 */
+    interface DictDataList {
+      list: DictDataItem[]
+      total: number
+    }
+
+    /** 字典数据搜索参数 */
+    interface DictDataSearchParams {
+      dictType?: string
+      label?: string
+      status?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 新增 / 编辑字典数据参数 */
+    interface DictDataSaveParams {
+      sort?: number
+      label: string
+      value: string
+      dictType: string
+      status: number
+      colorType?: string
+      cssClass?: string
+      remark?: string
+    }
+
+    /** 前端下拉 / 标签渲染用的字典项 */
+    interface DictItem {
+      label: string
+      value: string
+      colorType: string
+      cssClass: string
+      sort: number
+    }
+
+    /** 登录日志 */
+    interface LoginLogItem {
+      id: string
+      userId: string
+      /** 1 后台用户 / 2 会员 */
+      userType: number
+      username: string
+      /** 1 登录 / 2 登出 */
+      type: number
+      /** 0 失败 / 1 成功 */
+      result: number
+      userIp: string
+      userAgent: string
+      createdAt: string
+    }
+
+    /** 登录日志列表 */
+    interface LoginLogList {
+      list: LoginLogItem[]
+      total: number
+    }
+
+    /** 登录日志搜索参数 */
+    interface LoginLogSearchParams {
+      username?: string
+      type?: number
+      result?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 操作日志 */
+    interface OperateLogItem {
+      id: string
+      userId: string
+      /** 1 后台用户 / 2 会员 */
+      userType: number
+      /** 操作类型（模块） */
+      type: string
+      /** 操作子类型（动作） */
+      subType: string
+      action: string
+      /** 0 失败 / 1 成功 */
+      success: number
+      extra: string
+      requestMethod: string
+      requestUrl: string
+      requestIp: string
+      userAgent: string
+      /** 耗时（毫秒） */
+      duration: number
+      createdAt: string
+    }
+
+    /** 操作日志列表 */
+    interface OperateLogList {
+      list: OperateLogItem[]
+      total: number
+    }
+
+    /** 操作日志搜索参数 */
+    interface OperateLogSearchParams {
+      type?: string
+      subType?: string
+      keyword?: string
+      success?: number
+      pageNo?: number
+      pageSize?: number
     }
 
     /** 角色列表 */

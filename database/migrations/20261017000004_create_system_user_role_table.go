@@ -16,7 +16,7 @@ func (r *M20261017000004CreateSystemUserRoleTable) Signature() string {
 }
 
 // Up 建 system_user_role 关联表（docs 6.3）。
-// 关联表走软删除 + deleted_key，保证「解绑后重新绑定同一角色」不会撞唯一键（docs 6.8(4)）。
+// 关联表直接硬删除，唯一键建在业务键上（docs 6.8）。
 func (r *M20261017000004CreateSystemUserRoleTable) Up() error {
 	if facades.Schema().HasTable("system_user_role") {
 		return nil
@@ -32,9 +32,8 @@ CREATE TABLE system_user_role (
   updater      varchar(64) NOT NULL DEFAULT '' COMMENT '更新人',
   updated_at   datetime NULL COMMENT '更新时间',
   deleted_at   datetime NULL COMMENT '删除时间',
-  deleted_key  datetime GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED COMMENT '软删除让位生成列',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_user_role (user_id, role_id, deleted_key)
+  UNIQUE KEY uk_user_role (user_id, role_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户角色关联表'`); err != nil {
 		return err
 	}

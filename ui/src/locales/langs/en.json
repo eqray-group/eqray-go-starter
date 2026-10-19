@@ -262,7 +262,9 @@
       "user": "User Manage",
       "role": "Role Manage",
       "userCenter": "User Center",
-      "menu": "Menu Manage"
+      "menu": "Menu Manage",
+      "dict": "Dictionary",
+      "loginLog": "Login Log"
     }
   },
   "table": {

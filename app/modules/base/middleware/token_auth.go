@@ -5,6 +5,8 @@ import (
 	"github.com/goravel/framework/contracts/http"
 
 	baseAuth "eqray-go-starter/app/modules/base/auth"
+	baseErrs "eqray-go-starter/app/modules/base/errs"
+	"eqray-go-starter/app/modules/base/result"
 	"eqray-go-starter/app/modules/base/support"
 )
 
@@ -22,6 +24,7 @@ func (m *TokenAuth) Handle(ctx http.Context) {
 	token := baseAuth.BearerToken(ctx.Request().Header("Authorization"))
 	userID, err := baseAuth.Resolve(token)
 	if err != nil {
+		result.MarkFail(ctx, baseErrs.Unauthorized)
 		ctx.Request().Abort(http.StatusUnauthorized)
 		return
 	}

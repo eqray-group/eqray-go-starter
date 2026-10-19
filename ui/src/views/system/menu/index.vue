@@ -20,7 +20,14 @@
       >
         <template #left>
           <ElSpace wrap>
-            <ElButton type="primary" @click="handleAddMenu()" v-ripple>新增菜单</ElButton>
+            <ElButton
+              v-auth="'system:menu:create'"
+              type="primary"
+              @click="handleAddMenu()"
+              v-ripple
+            >
+              新增菜单
+            </ElButton>
             <ElButton @click="toggleExpand" v-ripple>
               {{ isExpanded ? '收起' : '展开' }}
             </ElButton>
@@ -55,14 +62,25 @@
 <script setup lang="ts">
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import { useTableColumns } from '@/hooks/core/useTableColumns'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { fetchDeleteMenu, fetchGetMenuTree } from '@/api/system/menu'
-  import { ElMessage, ElMessageBox, ElTag } from 'element-plus'
+  import {
+    ElButton,
+    ElDropdown,
+    ElDropdownItem,
+    ElDropdownMenu,
+    ElMessage,
+    ElMessageBox,
+    ElTag
+  } from 'element-plus'
   import MenuDialog from './modules/menu-dialog.vue'
 
   defineOptions({ name: 'Menus' })
 
   type MenuItem = Api.SystemManage.MenuItem
   type DialogType = 'add' | 'edit'
+
+  const { hasAuth } = useAuth()
 
   // 列表与弹窗状态
   const loading = ref(false)
@@ -116,13 +134,11 @@
   const { columnChecks, columns } = useTableColumns(() => [
     {
       prop: 'name',
-      label: '菜单名称',
-      minWidth: 180
+      label: '菜单名称'
     },
     {
       prop: 'type',
       label: '类型',
-      width: 90,
       formatter: (row: MenuItem) => {
         const config = TYPE_CONFIG[row.type] ?? { type: 'info' as const, text: '未知' }
         return h(ElTag, { type: config.type }, () => config.text)
@@ -131,30 +147,25 @@
     {
       prop: 'path',
       label: '路由 / 权限标识',
-      minWidth: 200,
       formatter: (row: MenuItem) => (row.type === 3 ? row.permission : row.path) || '-'
     },
     {
       prop: 'component',
       label: '组件路径',
-      minWidth: 180,
       formatter: (row: MenuItem) => row.component || '-'
     },
     {
       prop: 'permission',
       label: '权限标识',
-      minWidth: 180,
       formatter: (row: MenuItem) => row.permission || '-'
     },
     {
       prop: 'sort',
-      label: '排序',
-      width: 80
+      label: '排序'
     },
     {
       prop: 'status',
       label: '状态',
-      width: 90,
       formatter: (row: MenuItem) =>
         h(ElTag, { type: row.status === 1 ? 'success' : 'info' }, () =>
           row.status === 1 ? '启用' : '禁用'
@@ -162,8 +173,7 @@
     },
     {
       prop: 'createdAt',
-      label: '创建时间',
-      width: 170
+      label: '创建时间'
     },
     {
       prop: 'operation',
@@ -171,30 +181,50 @@
       width: 200,
       align: 'right',
       formatter: (row: MenuItem) => {
-        const buttons = []
+        // 常用操作直接展示，其余收进「更多」下拉（hover 展开），并按权限过滤
+        const buttons = [
+          ...(hasAuth('system:menu:update')
+            ? [
+                h(ArtButtonTable, {
+                  type: 'edit',
+                  text: '编辑',
+                  onClick: () => handleEditMenu(row)
+                })
+              ]
+            : []),
+          ...(hasAuth('system:menu:delete')
+            ? [
+                h(ArtButtonTable, {
+                  type: 'delete',
+                  text: '删除',
+                  onClick: () => handleDeleteMenu(row)
+                })
+              ]
+            : [])
+        ]
 
         // 只有目录 / 菜单可以挂子节点
-        if (row.type !== 3) {
+        if (hasAuth('system:menu:create') && row.type !== 3) {
           buttons.push(
-            h(ArtButtonTable, {
-              type: 'add',
-              title: '新增子项',
-              onClick: () => handleAddMenu(row)
-            })
+            h(
+              ElDropdown,
+              {
+                trigger: 'hover',
+                class: 'ml-3',
+                onCommand: () => handleAddMenu(row)
+              },
+              {
+                default: () => h(ArtButtonTable, { type: 'more' }),
+                dropdown: () =>
+                  h(ElDropdownMenu, null, () => [
+                    h(ElDropdownItem, { command: 'add' }, () => '新增子项')
+                  ])
+              }
+            )
           )
         }
-        buttons.push(
-          h(ArtButtonTable, {
-            type: 'edit',
-            onClick: () => handleEditMenu(row)
-          }),
-          h(ArtButtonTable, {
-            type: 'delete',
-            onClick: () => handleDeleteMenu(row)
-          })
-        )
 
-        return h('div', { style: 'text-align: right' }, buttons)
+        return h('div', { class: 'flex items-center justify-end' }, buttons)
       }
     }
   ])

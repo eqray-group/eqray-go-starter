@@ -12,7 +12,7 @@ func (r *M20261017000005CreateSystemRoleMenuTable) Signature() string {
 }
 
 // Up 建 system_role_menu 关联表（docs 6.3）。
-// 同样用软删除 + deleted_key，取消授权后可以再次授予同一菜单（docs 6.8(4)）。
+// 关联表直接硬删除，取消授权后可以再次授予同一菜单（docs 6.8）。
 func (r *M20261017000005CreateSystemRoleMenuTable) Up() error {
 	if facades.Schema().HasTable("system_role_menu") {
 		return nil
@@ -28,9 +28,8 @@ CREATE TABLE system_role_menu (
   updater      varchar(64) NOT NULL DEFAULT '' COMMENT '更新人',
   updated_at   datetime NULL COMMENT '更新时间',
   deleted_at   datetime NULL COMMENT '删除时间',
-  deleted_key  datetime GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED COMMENT '软删除让位生成列',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_role_menu (role_id, menu_id, deleted_key)
+  UNIQUE KEY uk_role_menu (role_id, menu_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色菜单关联表'`)
 }
 

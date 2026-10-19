@@ -75,6 +75,7 @@ func (r *RoleMenuRepository) ListMenuIDsByRoles(ctx context.Context, roleIDs []t
 func (r *RoleMenuRepository) Sync(ctx context.Context, tx db.Tx, roleID types.ID, menuIDs []types.ID) error {
 	rows := make([]model.SystemRoleMenuModel, 0)
 	if err := tx.Table(roleMenuTable).
+		Select("id", "menu_id").
 		Where("role_id", roleID).
 		WhereNull("deleted_at").
 		Get(&rows); err != nil {
@@ -83,22 +84,16 @@ func (r *RoleMenuRepository) Sync(ctx context.Context, tx db.Tx, roleID types.ID
 
 	wanted := toIDSet(menuIDs)
 	alive := make(map[types.ID]bool, len(rows))
-	now := types.Now()
-	updater := updaterFromCtx(ctx)
 
 	for _, row := range rows {
 		alive[row.MenuID] = true
 		if wanted[row.MenuID] {
 			continue
 		}
+		// 关联表不再软删除，直接物理删除，避免占用 (role_id, menu_id) 唯一键
 		if _, err := tx.Table(roleMenuTable).
 			Where("id", row.ID).
-			WhereNull("deleted_at").
-			Update(map[string]any{
-				"deleted_at": now,
-				"updater":    updater,
-				"updated_at": now,
-			}); err != nil {
+			Delete(); err != nil {
 			return err
 		}
 	}
@@ -127,19 +122,11 @@ func (r *RoleMenuRepository) Sync(ctx context.Context, tx db.Tx, roleID types.ID
 	return nil
 }
 
-// DeleteByRole 软删除角色的全部授权，删除角色时一并清理。
+// DeleteByRole 物理删除角色的全部授权，删除角色时一并清理。
 func (r *RoleMenuRepository) DeleteByRole(ctx context.Context, tx db.Tx, roleID types.ID) error {
-	now := types.Now()
-	updater := updaterFromCtx(ctx)
-
 	_, err := tx.Table(roleMenuTable).
 		Where("role_id", roleID).
-		WhereNull("deleted_at").
-		Update(map[string]any{
-			"deleted_at": now,
-			"updater":    updater,
-			"updated_at": now,
-		})
+		Delete()
 
 	return err
 }

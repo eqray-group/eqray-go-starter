@@ -486,11 +486,11 @@ base 只持有一张认证日志表。令牌采用**双令牌 + Redis** 方案�
 - 表名在迁移中显式指定，同时把 Model 的表名方法写死，避免复数化推导歧义。
 - 建表必须写**表注释与列注释**：表注释与本文档的表标题一致，列注释取自 6.x 的字段说明（状态类字段注明取值含义）。Schema Builder 用 `table.Comment("后台用户表")` / `table.String("nickname", 64).Comment("昵称")`，原生 SQL 用 `COMMENT='...'`。`SHOW CREATE TABLE` 与 DBA 排查都靠它。
 - 日志类表（`*_log`）数据量大，建议建表时即按 `created_at` 建索引，并规划定期归档。
-- 需要「删除后复用」的 `uk_*` 表，在同一个迁移里声明生成列 `deleted_key` 并把它放进唯一键（规则见 6.8(2)、SQL 写法见 15.9，不需要它的键见 6.8(3)）；其余表唯一键直接建在业务键上。生成列由数据库维护，`Down()` 跟着 `DropIfExists` 一起消失，无需额外处理。
+- 唯一键直接建在业务键上，不使用 `deleted_key` 生成列；关联表解除关系时用物理删除，避免占用唯一键（6.8(4)、SQL 写法见 15.9）。
 
 ### 6.8 唯一约束约定
 
-唯一性必须由数据库兜底：Service 层的「先查后插」存在并发窗口，只能用作友好提示，不能作为唯一性保证。本节集中说明各表的唯一键策略，**6.2 ~ 6.5 各表小节里列出的 `uk_*` 是「业务键」，实现时按 6.8(3) 的清单决定是否补 `deleted_key`**，两处若有出入以本节为准。
+唯一性必须由数据库兜底：Service 层的「先查后插」存在并发窗口，只能用作友好提示，不能作为唯一性保证。本节集中说明各表的唯一键策略，6.2 ~ 6.5 各表小节里列出的 `uk_*` 即最终形态，不再追加 `deleted_key`。
 
 #### （1）命名、列顺序与归一化
 
@@ -504,18 +504,16 @@ base 只持有一张认证日志表。令牌采用**双令牌 + Redis** 方案�
 
 #### （2）软删除与唯一索引的冲突
 
-问题：软删除的行仍在表里，唯一索引被旧值永久占位，删掉 `zhangsan` 后再建同名账号会撞 1062；而 MySQL **没有 `WHERE deleted_at IS NULL` 的部分索引**，无法只对活跃行建唯一约束。可选路线：
+问题：软删除的行仍在表里，唯一索引被旧值永久占位，删掉 `zhangsan` 后再建同名账号会撞 1062；而 MySQL **没有 `WHERE deleted_at IS NULL` 的部分索引**，无法只对活跃行建唯一约束。
 
-| 路线 | 做法 | 评价 |
-|---|---|---|
-| 不让位 | 唯一索引只含业务键，软删后该值永久占用 | 最简，但用户删掉的账号名再也用不了 |
-| 应用层让位 | 删除时把业务键改写成 `zhangsan__deleted_1234` | 业务代码要参与，历史数据可读性变差，审计信息失真 |
-| 标记列让位 | 加 `deleted` bigint 列，存活写 `0`、删除写 `id`，唯一键为 `(业务键, deleted)` | 无 NULL 陷阱，但该列必须手工维护，软删除逻辑不会改写它 |
-| 生成列让位（按表选用） | 加生成列 `deleted_key`，唯一键为 `(业务键, deleted_key)` | 应用代码零改动：软删除照常写 `deleted_at`，生成列由数据库自动跟随；代价是 DDL 只能用原生 SQL、多一列 |
+本项目统一选择**不让位**：唯一索引只含业务键，软删除后该值永久占用，不使用 `deleted_key` 生成列，也不在删除时改写业务键。
 
-只有**确实需要「删掉再建同名」**的表才用生成列。`system_users` 不用：后台账号删除等于作废，账号名不复用反而能避免审计混淆，唯一键直接建在业务键上即可。
+- `system_users`：后台账号删除等于作废，账号名不复用反而能避免审计混淆。
+- `system_role.code`：角色删除后标识不复用；`ExistsByCode` 查重不过滤 `deleted_at`，与唯一键行为保持一致（否则 Service 检查通过、数据库却撞 1062）。
+- 需要「删掉再建同名」的场景，说明这条记录本就不该软删除，应物理删除或换业务键。
+- 关联表不参与软删除，见 (4)。
 
-需要复用时这样写（该表除 `uk_username` 外，`uk_email`、`uk_mobile` 同样处理）：
+唯一键直接建在业务键上：
 
 ```sql
 CREATE TABLE system_users (
@@ -523,21 +521,14 @@ CREATE TABLE system_users (
   username     varchar(64) NOT NULL,
   -- …其他业务字段
   deleted_at   datetime    NULL,
-  deleted_key  datetime    GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_username (username, deleted_key)
+  UNIQUE KEY uk_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台用户表';
 ```
 
-- 存活行（`deleted_at IS NULL`）的生成值恒为哨兵 `1970-01-01 00:00:00`，等价于「只对存活行施加唯一约束」；软删除后生成值变为删除时刻，唯一键让位，同名值可重新创建。
-- 生成列必须定义在唯一键之前（列不存在时无法建索引），且只能写在原生迁移 SQL 里——Schema Builder 不认识它（模板见 15.9）。该表的 `deleted_at` 与生成列**必须同型**（本项目统一 `datetime NULL`），否则删除时刻被截断或进位，秒级判断会失真。表内已有数据时，用一条 `ALTER TABLE ... ADD COLUMN ..., ADD UNIQUE KEY ...` 改到位。
-- `deleted_key` **不在 Model 中声明**：写操作用显式 `map[string]any` 列名，读操作只映射 `db` tag 声明的列，因此它既不会被误写，也不会被带回业务对象。
-- 精度与 `deleted_at` 一致（秒级）：同一业务键在同一秒内被删除两次才会重新撞键，实践中可忽略。若不能接受，有两条出路：把该表的 `deleted_at` 与生成列同时提升为 `datetime(3)`（写入值自带毫秒即可）；或改用上面的「标记列让位」路线，把 `deleted` 写成 `id`（雪花 ID 天然唯一）。注意唯一键**不能**改写成 `(业务键, deleted_key, id)`——存活行的 `deleted_key` 是同一个哨兵值，加 `id` 后等于放弃对存活行的唯一约束。
-- 只有**存在唯一索引**的表才需要 `deleted_key`；没有唯一键的表照常软删除，不加此列。
+#### （3）事实记录与日志表
 
-#### （3）哪些键允许「删除后复用」
-
-是否复用**逐表决定**，默认不复用（唯一键直接建在业务键上）；清单里标「是」且确实存在「删掉再建同名」诉求的表，才按 (2) 加 `deleted_key`。另一类是「一次性事实记录」——删除后仍必须占位，唯一索引**不带** `deleted_key`：
+一次性事实记录删除后仍必须占位，唯一索引只含业务键：
 
 | 表 | 唯一键 | 为什么不允许复用 |
 |---|---|---|
@@ -547,15 +538,15 @@ CREATE TABLE system_users (
 
 #### （4）关联表的复合唯一
 
-关联表的唯一性表达的是「同一组合只允许一条**有效**关系」，删除语义是「解除关系」，因此同样要允许反复分配：
+关联表的唯一性表达的是「同一组合只允许一条关系」，删除语义是「解除关系」。唯一键不含删除时间，因此关联表**不做软删除**，解除关系时直接物理删除，才能反复分配：
 
 | 表 | 唯一键 |
 |---|---|
-| `system_user_role` | `uk_user_role(user_id, role_id, deleted_key)` |
-| `system_role_menu` | `uk_role_menu(role_id, menu_id, deleted_key)` |
-| `member_tag_ref` | `uk_user_tag(user_id, tag_id, deleted_key)` |
+| `system_user_role` | `uk_user_role(user_id, role_id)` |
+| `system_role_menu` | `uk_role_menu(role_id, menu_id)` |
+| `member_tag_ref` | `uk_user_tag(user_id, tag_id)` |
 
-反例：若写成 `uk_user_role(user_id, role_id)` 又要求软删除，「给用户重新分配之前删掉的角色」会直接撞唯一键，最后只能去改历史行的 `deleted_at`，反而破坏审计信息。关联表**不做物理删除**，与 (2) 用同一套机制。
+反例：关联表若沿用软删除，`uk_user_role(user_id, role_id)` 会和历史行冲突，「给用户重新分配之前解除的角色」直接撞 1062。因此 `Sync` 的做法是「多余的直接 `Delete`、缺少的 `Insert`」，删除角色时 `DeleteByRole` 也走物理删除。
 
 #### （5）应用侧必须处理 1062
 
@@ -567,20 +558,20 @@ CREATE TABLE system_users (
 
 #### （6）全量清单
 
-| 表 | 唯一键 | 删除后复用 | 备注 |
-|---|---|---|---|
-| `system_users` | `uk_username`、`uk_email`、`uk_mobile` | 否 | 账号删除后不复用，唯一键直接建在业务键上；`email`、`mobile` 用 NULL 表示未填 |
-| `system_role` | `uk_code` | 是 | 内置角色 `admin` 由初始化写入，不允许删除 |
-| `system_menu` | 无 | — | `permission` 仅按钮类节点填写，唯一性由业务层保证（见 6.3） |
-| `system_user_role` / `system_role_menu` | 见 (4) | 是 | 复合唯一 |
-| `system_dict_type` | `uk_type` | 是 | |
-| `system_dict_data` | `uk_type_value(dict_type, value)` | 是 | |
-| `infra_config` | `uk_config_key` | 是 | `config_key` 由代码常量引用，改名等于换键 |
-| `infra_file_config` / `infra_file` / `infra_job` / `infra_job_log` | 无 | — | 「至多一个主文件配置」由 Service 保证；任务名允许重复，用 `id` 区分 |
-| `member_user` | `uk_mobile` | 是 | 手机号即账号 |
-| `member_level` | `uk_level` | 是 | 删除等级前需确认无会员占用，属于 Service 职责 |
-| `member_sign_record` | `uk_user_day(user_id, day)` | 否 | 见 (3) |
-| `member_tag_ref` | `uk_user_tag(user_id, tag_id)` | 是 | 见 (4) |
+| 表 | 唯一键 | 备注 |
+|---|---|---|
+| `system_users` | `uk_username`、`uk_email`、`uk_mobile` | 账号删除后不复用，唯一键直接建在业务键上；`email`、`mobile` 用 NULL 表示未填 |
+| `system_role` | `uk_code` | 删除后标识不复用；内置角色 `SUPER_ADMIN` 由初始化写入，不允许删除 |
+| `system_menu` | 无 | `permission` 仅按钮类节点填写，唯一性由业务层保证（见 6.3） |
+| `system_user_role` / `system_role_menu` | 见 (4) | 复合唯一，解除关系时物理删除 |
+| `system_dict_type` | `uk_type` | 删除后标识不复用 |
+| `system_dict_data` | `uk_type_value(dict_type, value)` | 删除后键值不复用 |
+| `infra_config` | `uk_config_key` | `config_key` 由代码常量引用，改名等于换键 |
+| `infra_file_config` / `infra_file` / `infra_job` / `infra_job_log` | 无 | 「至多一个主文件配置」由 Service 保证；任务名允许重复，用 `id` 区分 |
+| `member_user` | `uk_mobile` | 手机号即账号，删除后不复用 |
+| `member_level` | `uk_level` | 删除等级前需确认无会员占用，属于 Service 职责 |
+| `member_sign_record` | `uk_user_day(user_id, day)` | 见 (3) |
+| `member_tag_ref` | `uk_user_tag(user_id, tag_id)` | 见 (4)，物理删除 |
 | `member_tag` / `member_group` / `system_notice` / `auth_login_log` / `system_operate_log` / `infra_api_*_log` | 无 | — | 名称类字段允许重复或由业务层保证，日志表只追加 |
 
 > 唯一键只保护「值唯一」，不保护「语义正确」：`member_user.level_id` 指向已删除等级、`system_user_role.role_id` 指向不存在的角色，数据库都不作约束（本项目不建物理外键，见 6.1），一致性由 Service 层负责。
@@ -596,8 +587,7 @@ CREATE TABLE system_users (
 | `id` | Repository 写入前调 `Base.FillCreate` | 否 | 雪花 ID，含时钟回拨处理 |
 | `creator` / `created_at` | 同上 `FillCreate` | 否 | 当前登录者取自 base 上下文 |
 | `updater` / `updated_at` | Repository 写入前调 `Base.FillUpdate` | 否 | 软删除同样先调它 |
-| `deleted_at` | Repository 显式写列 | 否 | 构造器不会自动加软删除条件，读写两侧都需显式处理；关联表同样走软删除，见 6.8(4) |
-| `deleted_key` | 数据库生成列 | 否 | 仅「删除后复用」的表才有；Model 中不声明该字段 |
+| `deleted_at` | Repository 显式写列 | 否 | 构造器不会自动加软删除条件，读写两侧都需显式处理；关联表解除关系用物理删除，见 6.8(4) |
 | `system_operate_log` | system 的 `OperateLog` 中间件 | 否 | 语义在路由注册时用元数据声明（9.5） |
 | `infra_api_access_log` | infra 的 `ApiAccessLog` 中间件 | 否 | 每个请求一条 |
 | `infra_api_error_log` | infra 的 `ApiErrorLog` 中间件 | 否 | 只记系统异常（见 9.5） |
@@ -1200,8 +1190,7 @@ func (m *SystemXxxModel) TableName() string {
 1. 标签用 `db:"..."`（查询构造器按它映射列），**不写 `gorm:"..."`**；`gorm` 标签在本项目的查询构造器链路里不生效。
 2. 主键与外键用 `types.ID`，时间字段用 `types.DateTime`，不自建 ID 类型、不用裸 `time.Time`（8.4、6.1）。
 3. 审计字段靠嵌入 `model.BaseModel` 获得，**不要重复声明** `id` / `creator` / `created_at` / `updater` / `updated_at` / `deleted_at`。
-4. `deleted_key`（6.8(2) 的生成列，仅「删除后复用」的表才有）**不写进 Model**，数据库自己维护。
-5. 表名以常量导出，**Repository 引用该常量**而不是再写一遍字面量，避免改表名漏改一处。
+4. 表名以常量导出，**Repository 引用该常量**而不是再写一遍字面量，避免改表名漏改一处。
 
 `status` 字段不单独定义枚举，直接复用 base 的公共启停枚举（11.1）：
 
@@ -1623,7 +1612,7 @@ func (r *M20261017000002CreateSystemXxxTable) Down() error {
 }
 ```
 
-需要「删除后复用」的唯一键表必须用原生 SQL 建表（生成列 `deleted_key` 只能出现在 DDL 里，6.8(2)）：
+唯一键直接建在业务键上。需要写原生 SQL（如生成列、复杂默认值）时用下面的模板，注意不要引入 `deleted_key`：
 
 ```go
 func (r *M20261017000002CreateSystemXxxTable) Up() error {
@@ -1642,9 +1631,8 @@ CREATE TABLE system_xxx (
   updater      varchar(64)  NOT NULL DEFAULT '' COMMENT '更新人',
   updated_at   datetime     NULL COMMENT '更新时间',
   deleted_at   datetime     NULL COMMENT '删除时间',
-  deleted_key  datetime     GENERATED ALWAYS AS (IFNULL(deleted_at, '1970-01-01 00:00:00')) STORED COMMENT '软删除让位生成列',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_name (name, deleted_key)
+  UNIQUE KEY uk_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='xxx 表'`)
 }
 
@@ -1655,7 +1643,7 @@ func (r *M20261017000002CreateSystemXxxTable) Down() error {
 
 - `HasTable` 判断保留，保证重复执行幂等；`Down()` 必须 `DropIfExists`（6.7）。
 - 建表顺序按 6.7 的依赖顺序插入，不要追加到文件末尾就算完成。
-- 两条分支按「删除后是否需要复用同名」选择，而不是按有没有唯一键：**不复用**的唯一键直接建在业务键上，Schema Builder 的 `table.Unique("uk_xxx", []string{"col"})` 或原生 SQL 均可（`system_users` 用的是后者）；**复用**的唯一键才用原生 SQL + `deleted_key`。
+- 唯一键直接建在业务键上：Schema Builder 的 `table.Unique("uk_xxx", []string{"col"})` 或原生 SQL 均可（`system_users` 用的是后者）；关联表唯一键同样只含业务键，解除关系时物理删除（6.8(4)）。
 
 ### 15.10 与正文的关系
 
@@ -1688,5 +1676,5 @@ func (r *M20261017000002CreateSystemXxxTable) Down() error {
 - [ ] Controller 只做取参/调 Service/出响应，错误走 `result.Fail`
 - [ ] 路由挂到正确前缀与中间件组，后台路由声明操作语义与权限标识
 - [ ] 错误码落在**本模块** `errs` 文件，编码段与该实体子模块一致
-- [ ] 迁移有 `HasTable` 幂等判断与 `DropIfExists` 的 `Down()`；需要复用的唯一键表用原生 SQL + `deleted_key`，其余唯一键直接建在业务键上
+- [ ] 迁移有 `HasTable` 幂等判断与 `DropIfExists` 的 `Down()`；唯一键直接建在业务键上，不使用 `deleted_key`；关联表解除关系用物理删除
 - [ ] 表注释与每个字段的 `COMMENT` 都写了，状态类字段注明取值含义

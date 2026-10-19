@@ -88,6 +88,8 @@ const (
 	layoutComponent = "/index/index"
 	// userCenterComponent 是个人中心页面，属于登录者自助页，不参与角色授权。
 	userCenterComponent = "/system/user-center"
+	// systemDirPath 是系统管理目录路径，个人中心固定挂在该目录下。
+	systemDirPath = "/system"
 )
 
 // Routes 返回当前用户可见的动态路由（后端权限模式）。
@@ -206,26 +208,36 @@ func routeAuthList(buttons []model.SystemMenuModel) []RouteAuthItem {
 	return items
 }
 
-// appendUserCenter 把个人中心挂到第一个一级目录下，作为隐藏的内置路由。
+// appendUserCenter 把个人中心挂到系统管理目录下，作为隐藏的内置路由。
+// 优先找 /system，避免「控制台」排到第一位后个人中心被挂到 /dashboard。
 func appendUserCenter(routes []*RouteRecord) []*RouteRecord {
+	var target *RouteRecord
 	for _, route := range routes {
 		if route.Component != layoutComponent {
 			continue
 		}
-
-		route.Children = append(route.Children, &RouteRecord{
-			Path:      "user-center",
-			Name:      "UserCenter",
-			Component: userCenterComponent,
-			Meta: RouteMeta{
-				Title:     "个人中心",
-				KeepAlive: true,
-				IsHide:    true,
-			},
-		})
-
+		if target == nil {
+			target = route
+		}
+		if route.Path == systemDirPath {
+			target = route
+			break
+		}
+	}
+	if target == nil {
 		return routes
 	}
+
+	target.Children = append(target.Children, &RouteRecord{
+		Path:      "user-center",
+		Name:      "UserCenter",
+		Component: userCenterComponent,
+		Meta: RouteMeta{
+			Title:     "个人中心",
+			KeepAlive: true,
+			IsHide:    true,
+		},
+	})
 
 	return routes
 }

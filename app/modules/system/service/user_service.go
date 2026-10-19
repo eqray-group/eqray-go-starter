@@ -186,6 +186,77 @@ func (s *UserService) ResetPassword(ctx context.Context, id types.ID, password s
 	return s.users.UpdatePassword(ctx, id, hash)
 }
 
+// ProfileUpdateInput 是当前登录者编辑个人资料的入参。
+type ProfileUpdateInput struct {
+	Nickname string
+	Email    string
+	Mobile   string
+	Sex      int8
+	Avatar   string
+}
+
+// UpdateProfile 更新当前登录者自己的资料：账号、状态、密码都不在此接口调整（docs 9.3）。
+// 头像留空表示不修改，避免前端未传时把已有头像清掉。
+func (s *UserService) UpdateProfile(ctx context.Context, id types.ID, in ProfileUpdateInput) error {
+	if in.Sex < 0 || in.Sex > 2 {
+		return baseErrs.WithMsg(baseErrs.BadRequest, "性别取值不合法")
+	}
+
+	user, err := s.Detail(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	email := strings.TrimSpace(in.Email)
+	if exists, err := s.users.ExistsBy(ctx, "email", email, id); err != nil {
+		return err
+	} else if exists {
+		return baseErrs.New(systemErrs.SystemEmailExists, email)
+	}
+
+	mobile := strings.TrimSpace(in.Mobile)
+	if exists, err := s.users.ExistsBy(ctx, "mobile", mobile, id); err != nil {
+		return err
+	} else if exists {
+		return baseErrs.New(systemErrs.SystemMobileExists, mobile)
+	}
+
+	user.Nickname = defaultString(strings.TrimSpace(in.Nickname), user.Username)
+	user.Email = optionalString(email)
+	user.Mobile = optionalString(mobile)
+	user.Sex = in.Sex
+	if avatar := strings.TrimSpace(in.Avatar); avatar != "" {
+		user.Avatar = avatar
+	}
+
+	return s.users.Update(ctx, user)
+}
+
+// ChangePassword 先校验旧密码，再更新为新密码的哈希。
+func (s *UserService) ChangePassword(ctx context.Context, id types.ID, oldPassword, newPassword string) error {
+	if oldPassword == "" || newPassword == "" {
+		return baseErrs.WithMsg(baseErrs.BadRequest, "密码不能为空")
+	}
+
+	user, err := s.Detail(ctx, id)
+	if err != nil {
+		return err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(oldPassword)) != nil {
+		return baseErrs.New(systemErrs.SystemOldPasswordWrong)
+	}
+	if oldPassword == newPassword {
+		return baseErrs.WithMsg(baseErrs.BadRequest, "新密码不能与当前密码相同")
+	}
+
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	return s.users.UpdatePassword(ctx, id, hash)
+}
+
 // RoleIDs 返回用户已绑定的角色 ID，分配角色弹窗回显用。
 func (s *UserService) RoleIDs(ctx context.Context, id types.ID) ([]types.ID, error) {
 	if _, err := s.Detail(ctx, id); err != nil {

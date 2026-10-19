@@ -21,6 +21,7 @@ type LoginResult = baseAuth.TokenPair
 // LoginInput 是登录入参，用结构体承接避免 Login 的参数列表过长。
 type LoginInput struct {
 	IP          string
+	UserAgent   string
 	Username    string
 	Password    string
 	CaptchaID   string
@@ -45,6 +46,7 @@ func NewAuthService() *AuthService {
 // 账号不存在与密码错误返回同一个错误码，避免被用来枚举账号。
 func (s *AuthService) Login(ctx context.Context, in LoginInput) (*LoginResult, error) {
 	if !baseAuth.VerifyCaptcha(in.CaptchaID, in.CaptchaCode) {
+		s.recordLogin(ctx, in, 0, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemCaptchaWrong)
 	}
 
@@ -52,17 +54,26 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*LoginResult, e
 	if err != nil {
 		return nil, err
 	}
-	if user == nil || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(in.Password)) != nil {
+	if user == nil {
+		s.recordLogin(ctx, in, 0, baseEnums.LoginResultFail)
+		return nil, baseErrs.New(systemErrs.SystemLoginFailed)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(in.Password)) != nil {
+		s.recordLogin(ctx, in, user.ID, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemLoginFailed)
 	}
 	if user.Status != baseEnums.CommonStatusEnabled {
+		s.recordLogin(ctx, in, user.ID, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemAccountDisabled)
 	}
 
 	tokens, err := baseAuth.Issue(user.ID)
 	if err != nil {
+		s.recordLogin(ctx, in, user.ID, baseEnums.LoginResultFail)
 		return nil, err
 	}
+
+	s.recordLogin(ctx, in, user.ID, baseEnums.LoginResultSuccess)
 
 	// 登录信息只用于展示，回写失败不阻断登录。
 	_ = s.users.UpdateLoginInfo(ctx, user.ID, in.IP, types.Now())
@@ -70,14 +81,48 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*LoginResult, e
 	return tokens, nil
 }
 
+// recordLogin 写后台用户的登录日志，失败不影响主流程。
+func (s *AuthService) recordLogin(ctx context.Context, in LoginInput, userID types.ID, result baseEnums.LoginResultEnum) {
+	baseAuth.RecordLoginLog(ctx, baseAuth.LoginLogInput{
+		UserID:    userID,
+		UserType:  baseEnums.UserTypeAdmin,
+		Username:  in.Username,
+		Type:      baseEnums.LoginTypeLogin,
+		Result:    result,
+		IP:        in.IP,
+		UserAgent: in.UserAgent,
+	})
+}
+
 // Refresh 用刷新令牌换一对新令牌，旧刷新令牌随之作废（docs 9.2）。
 func (s *AuthService) Refresh(refreshToken string) (*LoginResult, error) {
 	return baseAuth.Refresh(refreshToken)
 }
 
-// Logout 删除服务端保存的访问令牌与刷新令牌，使两者立即失效。
-func (s *AuthService) Logout(accessToken, refreshToken string) {
+// Logout 删除服务端保存的访问令牌与刷新令牌，使两者立即失效，并写登出日志。
+func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken, ip, userAgent string) {
+	// 先解析用户，注销后访问令牌就从 Redis 里删掉了
+	userID, _ := baseAuth.Resolve(accessToken)
 	baseAuth.Revoke(accessToken, refreshToken)
+
+	if userID == 0 {
+		return
+	}
+
+	username := ""
+	if user, err := s.users.FindByID(ctx, userID); err == nil && user != nil {
+		username = user.Username
+	}
+
+	baseAuth.RecordLoginLog(ctx, baseAuth.LoginLogInput{
+		UserID:    userID,
+		UserType:  baseEnums.UserTypeAdmin,
+		Username:  username,
+		Type:      baseEnums.LoginTypeLogout,
+		Result:    baseEnums.LoginResultSuccess,
+		IP:        ip,
+		UserAgent: userAgent,
+	})
 }
 
 // Profile 返回当前登录者的基础信息、角色标识与权限标识（docs 9.3）。
@@ -105,6 +150,8 @@ func (s *AuthService) Profile(ctx context.Context, id types.ID) (map[string]any,
 		"nickname": user.Nickname,
 		"avatar":   user.Avatar,
 		"email":    user.Email,
+		"mobile":   user.Mobile,
+		"sex":      user.Sex,
 		"roles":    roles,
 		"buttons":  buttons,
 	}, nil

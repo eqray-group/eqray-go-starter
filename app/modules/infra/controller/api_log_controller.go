@@ -1,0 +1,78 @@
+package controller
+
+import (
+	"github.com/goravel/framework/contracts/http"
+
+	"eqray-go-starter/app/modules/base/param"
+	"eqray-go-starter/app/modules/base/result"
+	"eqray-go-starter/app/modules/infra/repository"
+)
+
+// ApiLogController 提供 API 访问 / 错误日志的查询与处理接口。
+type ApiLogController struct {
+	repo *repository.ApiLogRepository
+}
+
+func NewApiLogController() *ApiLogController {
+	return &ApiLogController{repo: repository.NewApiLogRepository()}
+}
+
+// Access GET /api/v1/infra/api-logs/access
+func (c *ApiLogController) Access(ctx http.Context) http.Response {
+	page := param.Page{
+		PageNo:   ctx.Request().QueryInt("pageNo", 1),
+		PageSize: ctx.Request().QueryInt("pageSize", param.DefaultPageSize),
+	}
+	if err := page.Normalize(); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	filter := repository.ApiLogFilter{
+		RequestURL: ctx.Request().Query("requestUrl"),
+	}
+	if code := ctx.Request().QueryInt("resultCode", -1); code >= 0 {
+		filter.ResultCode = &code
+	}
+
+	list, total, err := c.repo.PaginateAccess(ctx.Context(), filter, page.PageNo, page.PageSize)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// Error GET /api/v1/infra/api-logs/error
+func (c *ApiLogController) Error(ctx http.Context) http.Response {
+	page := param.Page{
+		PageNo:   ctx.Request().QueryInt("pageNo", 1),
+		PageSize: ctx.Request().QueryInt("pageSize", param.DefaultPageSize),
+	}
+	if err := page.Normalize(); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, total, err := c.repo.PaginateError(ctx.Context(), repository.ApiLogFilter{
+		RequestURL: ctx.Request().Query("requestUrl"),
+		Keyword:    ctx.Request().Query("keyword"),
+	}, page.PageNo, page.PageSize)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// Process PUT /api/v1/infra/api-logs/error/{id}/process
+func (c *ApiLogController) Process(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	if err := c.repo.MarkErrorProcessed(ctx.Context(), id); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, nil)
+}

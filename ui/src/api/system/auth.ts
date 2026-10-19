@@ -45,3 +45,25 @@ export function fetchGetUserInfo() {
     url: '/api/v1/system/profile'
   })
 }
+
+/**
+ * 更新个人资料
+ * @param data 昵称、邮箱、手机号、性别、头像
+ */
+export function fetchUpdateProfile(data: Api.Auth.ProfileUpdateParams) {
+  return request.put<null>({
+    url: '/api/v1/system/profile',
+    params: data
+  })
+}
+
+/**
+ * 修改当前登录者密码
+ * @param data 当前密码与新密码
+ */
+export function fetchUpdateProfilePassword(data: Api.Auth.ProfilePasswordParams) {
+  return request.put<null>({
+    url: '/api/v1/system/profile/password',
+    params: data
+  })
+}

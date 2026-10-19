@@ -87,7 +87,7 @@
           @click="toggleFullScreen"
         />
 
-        <!-- 国际化按钮 -->
+        <!-- 国际化按钮
         <ElDropdown
           @command="changeLanguage"
           popper-class="langDropDownStyle"
@@ -108,8 +108,8 @@
             </ElDropdownMenu>
           </template>
         </ElDropdown>
-
-        <!-- 通知按钮 -->
+           -->
+        <!-- 通知按钮
         <ArtIconButton
           v-if="shouldShowNotification"
           icon="ri:notification-2-line"
@@ -118,8 +118,8 @@
         >
           <div class="absolute top-2 right-2 size-1.5 !bg-danger rounded-full"></div>
         </ArtIconButton>
-
-        <!-- 聊天按钮 -->
+-->
+        <!-- 聊天按钮
         <ArtIconButton
           v-if="shouldShowChat"
           icon="ri:message-3-line"
@@ -128,24 +128,12 @@
         >
           <div class="breathing-dot absolute top-2 right-2 size-1.5 !bg-success rounded-full"></div>
         </ArtIconButton>
-
+-->
         <!-- 设置按钮 -->
         <div v-if="shouldShowSettings">
-          <ElPopover :visible="showSettingGuide" placement="bottom-start" :width="190" :offset="0">
-            <template #reference>
               <div class="flex-cc">
-                <ArtIconButton icon="ri:settings-line" class="setting-btn" @click="openSetting" />
-              </div>
-            </template>
-            <template #default>
-              <p
-                >{{ $t('topBar.guide.title')
-                }}<span :style="{ color: systemThemeColor }"> {{ $t('topBar.guide.theme') }} </span
-                >、 <span :style="{ color: systemThemeColor }"> {{ $t('topBar.guide.menu') }} </span
-                >{{ $t('topBar.guide.description') }}
-              </p>
-            </template>
-          </ElPopover>
+                          <ArtIconButton icon="ri:settings-line" class="setting-btn" @click="openSetting" />
+                        </div>
         </div>
 
         <!-- 主题切换按钮 -->

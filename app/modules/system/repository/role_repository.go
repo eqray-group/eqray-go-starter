@@ -117,11 +117,11 @@ func (r *RoleRepository) ExistsByCode(ctx context.Context, code string, excludeI
 
 	var m model.SystemRoleModel
 
+	// 唯一键建在 code 上，软删除的角色仍占用标识，这里不能过滤 deleted_at
 	query := facades.DB().WithContext(ctx).Table(roleTable).
-		Where("code", code).
-		WhereNull("deleted_at")
+		Where("code", code)
 	if excludeID > 0 {
-		query = query.Where("id", "<>", excludeID)
+		query = query.Where("id <> ?", excludeID)
 	}
 
 	if err := query.First(&m); err != nil {

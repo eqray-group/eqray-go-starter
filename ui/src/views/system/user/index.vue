@@ -9,7 +9,9 @@
       <ArtTableHeader v-model:columns="columnChecks" :loading="loading" @refresh="refreshData">
         <template #left>
           <ElSpace wrap>
-            <ElButton @click="showDialog('add')" v-ripple>新增用户</ElButton>
+            <ElButton v-auth="'system:user:create'" @click="showDialog('add')" v-ripple>
+              新增用户
+            </ElButton>
           </ElSpace>
         </template>
       </ArtTableHeader>
@@ -46,16 +48,29 @@
 <script setup lang="ts">
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import { useTable } from '@/hooks/core/useTable'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { fetchDeleteUser, fetchGetUserList, fetchResetUserPassword } from '@/api/system/user'
   import UserSearch from './modules/user-search.vue'
   import UserDialog from './modules/user-dialog.vue'
   import UserRoleDialog from './modules/user-role-dialog.vue'
-  import { ElButton, ElMessage, ElMessageBox, ElTag } from 'element-plus'
+  import {
+    ElAvatar,
+    ElButton,
+    ElDropdown,
+    ElDropdownItem,
+    ElDropdownMenu,
+    ElMessage,
+    ElMessageBox,
+    ElTag
+  } from 'element-plus'
+  import defaultAvatar from '@imgs/user/avatar.webp'
   import type { DialogType } from '@/types'
 
   defineOptions({ name: 'User' })
 
   type UserListItem = Api.SystemManage.UserListItem
+
+  const { hasAuth } = useAuth()
 
   // 弹窗相关
   const dialogType = ref<DialogType>('add')
@@ -107,7 +122,19 @@
       },
       columnsFactory: () => [
         { type: 'selection' }, // 勾选列
-        { type: 'index', width: 60, label: '序号' }, // 序号
+        {
+          prop: 'avatar',
+          label: '头像',
+          width: 80,
+          align: 'center',
+          formatter: (row: UserListItem) =>
+            h(ElAvatar, {
+              size: 36,
+              shape: 'circle',
+              fit: 'cover',
+              src: row.avatar || defaultAvatar
+            })
+        },
         {
           prop: 'username',
           label: '账号',
@@ -157,29 +184,59 @@
         {
           prop: 'operation',
           label: '操作',
-          width: 280,
+          width: 200,
           fixed: 'right', // 固定列
-          formatter: (row: UserListItem) =>
-            h('div', [
-              h(ArtButtonTable, {
-                type: 'edit',
-                onClick: () => showDialog('edit', row)
-              }),
-              h(ArtButtonTable, {
-                type: 'delete',
-                onClick: () => deleteUser(row)
-              }),
-              h(
-                ElButton,
-                { type: 'primary', link: true, size: 'small', onClick: () => showRoleDialog(row) },
-                () => '分配角色'
-              ),
-              h(
-                ElButton,
-                { type: 'primary', link: true, size: 'small', onClick: () => resetPassword(row) },
-                () => '重置密码'
-              )
+          // 常用操作直接展示，其余收进「更多」下拉（hover 展开），并按权限过滤
+          formatter: (row: UserListItem) => {
+            const canUpdate = hasAuth('system:user:update')
+            const canDelete = hasAuth('system:user:delete')
+            const canAssignRole = hasAuth('system:user:assign-role')
+
+            const moreItems = [
+              ...(canAssignRole ? [h(ElDropdownItem, { command: 'role' }, () => '分配角色')] : []),
+              ...(canUpdate ? [h(ElDropdownItem, { command: 'reset' }, () => '重置密码')] : [])
+            ]
+
+            return h('div', { class: 'flex items-center' }, [
+              ...(canUpdate
+                ? [
+                    h(ArtButtonTable, {
+                      type: 'edit',
+                      text: '编辑',
+                      onClick: () => showDialog('edit', row)
+                    })
+                  ]
+                : []),
+              ...(canDelete
+                ? [
+                    h(ArtButtonTable, {
+                      type: 'delete',
+                      text: '删除',
+                      onClick: () => deleteUser(row)
+                    })
+                  ]
+                : []),
+              ...(moreItems.length
+                ? [
+                    h(
+                      ElDropdown,
+                      {
+                        trigger: 'hover',
+                        class: 'ml-3',
+                        onCommand: (command: string) => {
+                          if (command === 'role') showRoleDialog(row)
+                          if (command === 'reset') resetPassword(row)
+                        }
+                      },
+                      {
+                        default: () => h(ArtButtonTable, { type: 'more' }),
+                        dropdown: () => h(ElDropdownMenu, null, () => moreItems)
+                      }
+                    )
+                  ]
+                : [])
             ])
+          }
         }
       ]
     }

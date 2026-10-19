@@ -54,6 +54,30 @@ func (s *PermissionService) IsSuperAdmin(ctx context.Context, userID types.ID) (
 	return false, nil
 }
 
+// Allows 判断用户是否拥有指定权限标识，供 base 的权限中间件注入调用。
+// 超级管理员直接放行，与中间件原有的放行规则一致（docs 9.3）。
+func (s *PermissionService) Allows(ctx context.Context, userID types.ID, code string) (bool, error) {
+	super, err := s.IsSuperAdmin(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if super {
+		return true, nil
+	}
+
+	codes, err := s.Permissions(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, item := range codes {
+		if item == code {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // RoleCodes 返回用户已启用角色的标识集合，登录信息展示用。
 func (s *PermissionService) RoleCodes(ctx context.Context, userID types.ID) ([]string, error) {
 	roles, err := s.enabledRoles(ctx, userID)

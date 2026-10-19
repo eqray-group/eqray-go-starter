@@ -30,6 +30,11 @@ export default ({ mode }: { mode: string }) => {
         '/api': {
           target: VITE_API_PROXY_URL,
           changeOrigin: true
+        },
+        // 上传文件由后端 /storage 静态路由提供
+        '/storage': {
+          target: VITE_API_PROXY_URL,
+          changeOrigin: true
         }
       },
       host: true

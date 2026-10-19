@@ -8,7 +8,9 @@
       <ArtTableHeader v-model:columns="columnChecks" :loading="loading" @refresh="refreshData">
         <template #left>
           <ElSpace wrap>
-            <ElButton @click="showDialog('add')" v-ripple>新增角色</ElButton>
+            <ElButton v-auth="'system:role:create'" @click="showDialog('add')" v-ripple>
+              新增角色
+            </ElButton>
           </ElSpace>
         </template>
       </ArtTableHeader>
@@ -44,8 +46,17 @@
 <script setup lang="ts">
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import { useTable } from '@/hooks/core/useTable'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { fetchDeleteRole, fetchGetRoleList } from '@/api/system/role'
-  import { ElButton, ElMessage, ElMessageBox, ElTag } from 'element-plus'
+  import {
+    ElButton,
+    ElDropdown,
+    ElDropdownItem,
+    ElDropdownMenu,
+    ElMessage,
+    ElMessageBox,
+    ElTag
+  } from 'element-plus'
   import RoleSearch from './modules/role-search.vue'
   import RoleEditDialog from './modules/role-edit-dialog.vue'
   import RolePermissionDialog from './modules/role-permission-dialog.vue'
@@ -54,6 +65,8 @@
 
   type RoleItem = Api.SystemManage.RoleItem
   type DialogType = 'add' | 'edit'
+
+  const { hasAuth } = useAuth()
 
   const editVisible = ref(false)
   const editType = ref<DialogType>('add')
@@ -96,7 +109,6 @@
       },
       columnsFactory: () => [
         { type: 'selection' },
-        { type: 'index', width: 60, label: '序号' },
         { prop: 'name', label: '角色名称', minWidth: 140 },
         { prop: 'code', label: '角色标识', minWidth: 140 },
         {
@@ -128,29 +140,54 @@
         {
           prop: 'operation',
           label: '操作',
-          width: 180,
+          width: 200,
           fixed: 'right',
-          formatter: (row: RoleItem) =>
-            h('div', [
-              h(ArtButtonTable, {
-                type: 'edit',
-                onClick: () => showDialog('edit', row)
-              }),
-              h(
-                ElButton,
-                {
-                  type: 'primary',
-                  link: true,
-                  size: 'small',
-                  onClick: () => showPermissionDialog(row)
-                },
-                () => '授权'
-              ),
-              h(ArtButtonTable, {
-                type: 'delete',
-                onClick: () => handleDelete(row)
-              })
+          // 常用操作直接展示，其余收进「更多」下拉（hover 展开），并按权限过滤
+          formatter: (row: RoleItem) => {
+            const canUpdate = hasAuth('system:role:update')
+            const canDelete = hasAuth('system:role:delete')
+            const canAssignMenu = hasAuth('system:role:assign-menu')
+
+            return h('div', { class: 'flex items-center' }, [
+              ...(canUpdate
+                ? [
+                    h(ArtButtonTable, {
+                      type: 'edit',
+                      text: '编辑',
+                      onClick: () => showDialog('edit', row)
+                    })
+                  ]
+                : []),
+              ...(canDelete
+                ? [
+                    h(ArtButtonTable, {
+                      type: 'delete',
+                      text: '删除',
+                      onClick: () => handleDelete(row)
+                    })
+                  ]
+                : []),
+              ...(canAssignMenu
+                ? [
+                    h(
+                      ElDropdown,
+                      {
+                        trigger: 'hover',
+                        class: 'ml-3',
+                        onCommand: () => showPermissionDialog(row)
+                      },
+                      {
+                        default: () => h(ArtButtonTable, { type: 'more' }),
+                        dropdown: () =>
+                          h(ElDropdownMenu, null, () => [
+                            h(ElDropdownItem, { command: 'permission' }, () => '授权')
+                          ])
+                      }
+                    )
+                  ]
+                : [])
             ])
+          }
         }
       ]
     }

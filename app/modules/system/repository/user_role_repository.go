@@ -7,7 +7,6 @@ import (
 	"github.com/goravel/framework/contracts/database/db"
 
 	"eqray-go-starter/app/facades"
-	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
 	"eqray-go-starter/app/modules/system/model"
 )
@@ -53,6 +52,7 @@ func (r *UserRoleRepository) CountUsersByRole(ctx context.Context, roleID types.
 func (r *UserRoleRepository) Sync(ctx context.Context, tx db.Tx, userID types.ID, roleIDs []types.ID) error {
 	rows := make([]model.SystemUserRoleModel, 0)
 	if err := tx.Table(userRoleTable).
+		Select("id", "role_id").
 		Where("user_id", userID).
 		WhereNull("deleted_at").
 		Get(&rows); err != nil {
@@ -61,22 +61,16 @@ func (r *UserRoleRepository) Sync(ctx context.Context, tx db.Tx, userID types.ID
 
 	wanted := toIDSet(roleIDs)
 	alive := make(map[types.ID]bool, len(rows))
-	now := types.Now()
-	updater := updaterFromCtx(ctx)
 
 	for _, row := range rows {
 		alive[row.RoleID] = true
 		if wanted[row.RoleID] {
 			continue
 		}
+		// 关联表不再软删除，直接物理删除，避免占用 (user_id, role_id) 唯一键
 		if _, err := tx.Table(userRoleTable).
 			Where("id", row.ID).
-			WhereNull("deleted_at").
-			Update(map[string]any{
-				"deleted_at": now,
-				"updater":    updater,
-				"updated_at": now,
-			}); err != nil {
+			Delete(); err != nil {
 			return err
 		}
 	}
@@ -103,15 +97,6 @@ func (r *UserRoleRepository) Sync(ctx context.Context, tx db.Tx, userID types.ID
 	}
 
 	return nil
-}
-
-// updaterFromCtx 取当前登录者写审计字段。
-func updaterFromCtx(ctx context.Context) string {
-	if uid := support.UserID(ctx); uid != 0 {
-		return types.ID(uid).String()
-	}
-
-	return ""
 }
 
 // toIDSet 把 ID 集合转成去重 set。

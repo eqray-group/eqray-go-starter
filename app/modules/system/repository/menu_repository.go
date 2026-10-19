@@ -130,7 +130,7 @@ func (r *MenuRepository) ListPermissions(ctx context.Context) ([]string, error) 
 
 	if err := facades.DB().WithContext(ctx).Table(menuTable).
 		Select("permission").
-		Where("permission", "<>", "").
+		Where("permission <> ?", "").
 		WhereNull("deleted_at").
 		Get(&list); err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (r *MenuRepository) ListPermissionsByIDs(ctx context.Context, ids []types.I
 	if err := facades.DB().WithContext(ctx).Table(menuTable).
 		Select("permission").
 		WhereIn("id", values).
-		Where("permission", "<>", "").
+		Where("permission <> ?", "").
 		WhereNull("deleted_at").
 		Get(&list); err != nil {
 		return nil, err

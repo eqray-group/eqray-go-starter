@@ -1,0 +1,61 @@
+package infra
+
+import (
+	"github.com/goravel/framework/contracts/route"
+
+	"eqray-go-starter/app/facades"
+	baseMiddleware "eqray-go-starter/app/modules/base/middleware"
+	"eqray-go-starter/app/modules/infra/controller"
+)
+
+// Register 注册 infra 模块的路由，由 routes.Modules() 统一调用（docs 4）。
+func Register() {
+	fileController := controller.NewFileController()
+	fileConfigController := controller.NewFileConfigController()
+	configController := controller.NewConfigController()
+	apiLogController := controller.NewApiLogController()
+
+	facades.Route().Prefix("/api/v1/infra").Group(func(r route.Router) {
+		auth := r.Middleware(&baseMiddleware.TokenAuth{})
+
+		// 权限中间件已下沉到 base，infra 按自身权限点校验，不再依赖 system
+		perm := func(code string) route.Router {
+			return auth.Middleware(&baseMiddleware.Permission{Code: code})
+		}
+
+		// operate 给写操作声明留痕语义，中间件注册在 Permission 之内（docs 9.5）
+		operate := func(typ, sub string) *baseMiddleware.OperateLog {
+			return &baseMiddleware.OperateLog{Type: typ, SubType: sub}
+		}
+
+		// 上传只要求登录态：头像等自助场景不应被具体权限点挡住，但上传动作需要留痕
+		auth.Middleware(operate("文件管理", "上传文件")).Post("/files", fileController.Upload)
+
+		perm("infra:file:list").Get("/files", fileController.Index)
+		perm("infra:file:delete").Middleware(operate("文件管理", "删除文件")).
+			Delete("/files/{id}", fileController.Destroy)
+
+		perm("infra:file-config:list").Get("/file-configs", fileConfigController.Index)
+		perm("infra:file-config:create").Middleware(operate("文件配置", "新增配置")).
+			Post("/file-configs", fileConfigController.Store)
+		perm("infra:file-config:update").Middleware(operate("文件配置", "编辑配置")).
+			Put("/file-configs/{id}", fileConfigController.Update)
+		perm("infra:file-config:update").Middleware(operate("文件配置", "设为主配置")).
+			Put("/file-configs/{id}/master", fileConfigController.SetMaster)
+		perm("infra:file-config:delete").Middleware(operate("文件配置", "删除配置")).
+			Delete("/file-configs/{id}", fileConfigController.Destroy)
+
+		perm("infra:config:list").Get("/configs", configController.Index)
+		perm("infra:config:create").Middleware(operate("参数配置", "新增参数")).
+			Post("/configs", configController.Store)
+		perm("infra:config:update").Middleware(operate("参数配置", "编辑参数")).
+			Put("/configs/{id}", configController.Update)
+		perm("infra:config:delete").Middleware(operate("参数配置", "删除参数")).
+			Delete("/configs/{id}", configController.Destroy)
+
+		perm("infra:api-log:list").Get("/api-logs/access", apiLogController.Access)
+		perm("infra:api-log:list").Get("/api-logs/error", apiLogController.Error)
+		perm("infra:api-log:update").Middleware(operate("API 日志", "标记处理")).
+			Put("/api-logs/error/{id}/process", apiLogController.Process)
+	})
+}

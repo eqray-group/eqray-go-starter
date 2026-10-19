@@ -69,7 +69,7 @@ func (r *UserRepository) ExistsBy(ctx context.Context, column, value string, exc
 		Where(column, value).
 		WhereNull("deleted_at")
 	if excludeID > 0 {
-		query = query.Where("id", "<>", excludeID)
+		query = query.Where("id <> ?", excludeID)
 	}
 
 	if err := query.First(&m); err != nil {

@@ -61,13 +61,19 @@ func Bind(ctx http.Context, req Validatable) error {
 
 // Validate 按规则校验请求数据，失败时返回带 400 错误码的业务异常。
 // 返回的 msg 取自校验器的第一条错误，便于前端直接提示。
+// 没有任何规则的请求（如分配角色、角色授权）直接跳过校验，框架不接受空规则集合。
 func Validate(ctx http.Context, req Validatable) error {
+	rules := req.Rules(ctx)
+	if len(rules) == 0 {
+		return nil
+	}
+
 	var options []contractsValidation.Option
 	if provider, ok := req.(MessagesProvider); ok {
 		options = append(options, validation.Messages(provider.Messages(ctx)))
 	}
 
-	validator, err := ctx.Request().Validate(req.Rules(ctx), options...)
+	validator, err := ctx.Request().Validate(rules, options...)
 	if err != nil {
 		return err
 	}
