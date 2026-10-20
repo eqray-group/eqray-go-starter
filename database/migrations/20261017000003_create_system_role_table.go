@@ -1,10 +1,7 @@
 package migrations
 
 import (
-	"time"
-
 	"eqray-go-starter/app/facades"
-	"eqray-go-starter/app/modules/base/support"
 )
 
 type M20261017000003CreateSystemRoleTable struct{}
@@ -14,14 +11,15 @@ func (r *M20261017000003CreateSystemRoleTable) Signature() string {
 	return "20261017000003_create_system_role_table"
 }
 
-// Up 建 system_role 表并写入内置角色 SUPER_ADMIN（docs 6.3）。
+// Up 建 system_role 角色表（docs 6.3）。
 // 角色编码唯一；角色软删除后编码仍被占用，避免与历史数据混淆。
+// 内置角色数据由 20261017000008_seed_system_role 负责，建表与数据填充分离。
 func (r *M20261017000003CreateSystemRoleTable) Up() error {
 	if facades.Schema().HasTable("system_role") {
 		return nil
 	}
 
-	if err := facades.DB().Statement(`
+	return facades.DB().Statement(`
 CREATE TABLE system_role (
   id           bigint       NOT NULL COMMENT '主键',
   name         varchar(64)  NOT NULL COMMENT '角色名称',
@@ -37,32 +35,7 @@ CREATE TABLE system_role (
   deleted_at   datetime     NULL COMMENT '删除时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_code (code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表'`); err != nil {
-		return err
-	}
-
-	return r.seedAdminRole()
-}
-
-// seedAdminRole 写入内置超管角色，权限校验时按 code = SUPER_ADMIN 直接放行（docs 9.3）。
-func (r *M20261017000003CreateSystemRoleTable) seedAdminRole() error {
-	now := time.Now()
-
-	_, err := facades.DB().Table("system_role").Insert(map[string]any{
-		"id":         support.NewID(),
-		"name":       "超级管理员",
-		"code":       "SUPER_ADMIN",
-		"sort":       0,
-		"status":     1,
-		"type":       1,
-		"remark":     "内置角色，拥有全部权限",
-		"creator":    "system",
-		"created_at": now,
-		"updater":    "system",
-		"updated_at": now,
-	})
-
-	return err
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表'`)
 }
 
 // Down Reverse the migrations.

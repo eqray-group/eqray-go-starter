@@ -14,6 +14,8 @@ func Register() {
 	fileConfigController := controller.NewFileConfigController()
 	configController := controller.NewConfigController()
 	apiLogController := controller.NewApiLogController()
+	smsChannelController := controller.NewInfraSmsChannelController()
+	smsTemplateController := controller.NewInfraSmsTemplateController()
 
 	facades.Route().Prefix("/api/v1/infra").Group(func(r route.Router) {
 		auth := r.Middleware(&baseMiddleware.TokenAuth{})
@@ -57,5 +59,25 @@ func Register() {
 		perm("infra:api-log:list").Get("/api-logs/error", apiLogController.Error)
 		perm("infra:api-log:update").Middleware(operate("API 日志", "标记处理")).
 			Put("/api-logs/error/{id}/process", apiLogController.Process)
+
+		// 短信渠道与模板：配置在 infra，member 等模块通过 InfraSmsService 复用发送能力
+		perm("infra:sms-channel:list").Get("/sms-channels", smsChannelController.Index)
+		perm("infra:sms-template:list").Get("/sms-channels/options", smsChannelController.Options)
+		perm("infra:sms-channel:list").Get("/sms-channels/{id}", smsChannelController.Show)
+		perm("infra:sms-channel:create").Middleware(operate("短信管理", "新增渠道")).
+			Post("/sms-channels", smsChannelController.Store)
+		perm("infra:sms-channel:update").Middleware(operate("短信管理", "编辑渠道")).
+			Put("/sms-channels/{id}", smsChannelController.Update)
+		perm("infra:sms-channel:delete").Middleware(operate("短信管理", "删除渠道")).
+			Delete("/sms-channels/{id}", smsChannelController.Destroy)
+
+		perm("infra:sms-template:list").Get("/sms-templates", smsTemplateController.Index)
+		perm("infra:sms-template:list").Get("/sms-templates/{id}", smsTemplateController.Show)
+		perm("infra:sms-template:create").Middleware(operate("短信管理", "新增模板")).
+			Post("/sms-templates", smsTemplateController.Store)
+		perm("infra:sms-template:update").Middleware(operate("短信管理", "编辑模板")).
+			Put("/sms-templates/{id}", smsTemplateController.Update)
+		perm("infra:sms-template:delete").Middleware(operate("短信管理", "删除模板")).
+			Delete("/sms-templates/{id}", smsTemplateController.Destroy)
 	})
 }

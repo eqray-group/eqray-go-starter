@@ -1,0 +1,312 @@
+package controller
+
+import (
+	"strconv"
+
+	"github.com/goravel/framework/contracts/http"
+
+	baseEnums "eqray-go-starter/app/modules/base/enums"
+	"eqray-go-starter/app/modules/base/param"
+	"eqray-go-starter/app/modules/base/result"
+	"eqray-go-starter/app/modules/base/types"
+	"eqray-go-starter/app/modules/member/request"
+	"eqray-go-starter/app/modules/member/service"
+)
+
+// MemberController 提供会员档案的增删改查与积分 / 等级调整接口。
+type MemberController struct {
+	service *service.MemberService
+	socials *service.MemberSocialService
+}
+
+func NewMemberController() *MemberController {
+	return &MemberController{
+		service: service.NewMemberService(),
+		socials: service.NewMemberSocialService(),
+	}
+}
+
+// Index GET /api/v1/member/users
+func (c *MemberController) Index(ctx http.Context) http.Response {
+	page := param.Page{
+		PageNo:   ctx.Request().QueryInt("pageNo", 1),
+		PageSize: ctx.Request().QueryInt("pageSize", param.DefaultPageSize),
+	}
+	if err := page.Normalize(); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	q := service.MemberListQuery{
+		Nickname: ctx.Request().Query("nickname"),
+		Mobile:   ctx.Request().Query("mobile"),
+		LevelID:  queryID(ctx, "levelId"),
+		GroupID:  queryID(ctx, "groupId"),
+		PageNo:   page.PageNo,
+		PageSize: page.PageSize,
+	}
+	if status := ctx.Request().QueryInt("status", -1); status >= 0 {
+		v := baseEnums.CommonStatusEnum(status)
+		q.Status = &v
+	}
+
+	list, total, err := c.service.Page(ctx.Context(), q)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// Show GET /api/v1/member/users/{id}
+func (c *MemberController) Show(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	m, err := c.service.Detail(ctx.Context(), id)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, m)
+}
+
+// Store POST /api/v1/member/users
+func (c *MemberController) Store(ctx http.Context) http.Response {
+	var req request.MemberSaveRequest
+	if err := param.Bind(ctx, &req); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	id, err := c.service.Create(ctx.Context(), toMemberSaveInput(req))
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, map[string]any{"id": id})
+}
+
+// Update PUT /api/v1/member/users/{id}
+func (c *MemberController) Update(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	var req request.MemberSaveRequest
+	if err := param.Bind(ctx, &req); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	if err := c.service.Update(ctx.Context(), id, toMemberSaveInput(req)); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, nil)
+}
+
+// UpdateStatus PUT /api/v1/member/users/{id}/status
+func (c *MemberController) UpdateStatus(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	var req request.MemberStatusRequest
+	if err := param.Bind(ctx, &req); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	if err := c.service.UpdateStatus(ctx.Context(), id, req.Status); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, nil)
+}
+
+// AdjustPoint POST /api/v1/member/users/{id}/point
+func (c *MemberController) AdjustPoint(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	var req request.MemberPointRequest
+	if err := param.Bind(ctx, &req); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	if err := c.service.AdjustPoint(ctx.Context(), id, req.Point, req.Title, req.Description); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, nil)
+}
+
+// AdjustLevel PUT /api/v1/member/users/{id}/level
+func (c *MemberController) AdjustLevel(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	var req request.MemberLevelAdjustRequest
+	if err := param.Bind(ctx, &req); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	if err := c.service.AdjustLevel(ctx.Context(), id, req.LevelID, req.Experience, req.Title, req.Description); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, nil)
+}
+
+// PointRecords GET /api/v1/member/users/{id}/points
+func (c *MemberController) PointRecords(ctx http.Context) http.Response {
+	id, page, err := c.pathIDAndPage(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, total, err := c.service.PointRecords(ctx.Context(), id, page.PageNo, page.PageSize)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// LevelRecords GET /api/v1/member/users/{id}/level-records
+func (c *MemberController) LevelRecords(ctx http.Context) http.Response {
+	id, page, err := c.pathIDAndPage(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, total, err := c.service.LevelRecords(ctx.Context(), id, page.PageNo, page.PageSize)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// SignRecords GET /api/v1/member/users/{id}/sign-records
+func (c *MemberController) SignRecords(ctx http.Context) http.Response {
+	id, page, err := c.pathIDAndPage(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, total, err := c.service.SignRecords(ctx.Context(), id, page.PageNo, page.PageSize)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Page(ctx, list, total)
+}
+
+// Addresses GET /api/v1/member/users/{id}/addresses
+func (c *MemberController) Addresses(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, err := c.service.Addresses(ctx.Context(), id)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, list)
+}
+
+// SocialBindings GET /api/v1/member/users/{id}/social-bindings
+// 管理端只读查看会员绑定的第三方账号。
+func (c *MemberController) SocialBindings(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	list, err := c.socials.Bindings(ctx.Context(), id)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, list)
+}
+
+// Destroy DELETE /api/v1/member/users/{id}
+func (c *MemberController) Destroy(ctx http.Context) http.Response {
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	if err := c.service.Delete(ctx.Context(), id); err != nil {
+		return result.Fail(ctx, err)
+	}
+
+	return result.Success(ctx, nil)
+}
+
+// toMemberSaveInput 把请求体转换为服务层入参。
+func toMemberSaveInput(req request.MemberSaveRequest) service.MemberSaveInput {
+	in := service.MemberSaveInput{
+		Nickname:   req.Nickname,
+		Mobile:     req.Mobile,
+		Avatar:     req.Avatar,
+		Name:       req.Name,
+		Sex:        req.Sex,
+		AreaID:     req.AreaID,
+		LevelID:    req.LevelID,
+		Point:      req.Point,
+		Experience: req.Experience,
+		TagIDs:     req.TagIDs,
+		Mark:       req.Mark,
+		GroupID:    req.GroupID,
+		Status:     req.Status,
+	}
+	if req.Birthday != nil && !req.Birthday.IsZero() {
+		birthday := *req.Birthday
+		in.Birthday = &birthday
+	}
+
+	return in
+}
+
+// pathIDAndPage 统一解析路径 ID 与分页参数。
+func (c *MemberController) pathIDAndPage(ctx http.Context) (types.ID, param.Page, error) {
+	page := param.Page{
+		PageNo:   ctx.Request().QueryInt("pageNo", 1),
+		PageSize: ctx.Request().QueryInt("pageSize", param.DefaultPageSize),
+	}
+	if err := page.Normalize(); err != nil {
+		return 0, page, err
+	}
+
+	id, err := param.PathID(ctx)
+	if err != nil {
+		return 0, page, err
+	}
+
+	return id, page, nil
+}
+
+// queryID 解析雪花 ID 查询参数，非法值按「不限制」处理。
+func queryID(ctx http.Context, key string) types.ID {
+	raw := ctx.Request().Query(key)
+	if raw == "" {
+		return 0
+	}
+
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+
+	return types.ID(id)
+}

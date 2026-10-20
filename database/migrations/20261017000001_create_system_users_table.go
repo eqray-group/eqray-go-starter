@@ -1,12 +1,7 @@
 package migrations
 
 import (
-	"time"
-
-	"golang.org/x/crypto/bcrypt"
-
 	"eqray-go-starter/app/facades"
-	"eqray-go-starter/app/modules/base/support"
 )
 
 type M20261017000001CreateSystemUsersTable struct{}
@@ -16,14 +11,15 @@ func (r *M20261017000001CreateSystemUsersTable) Signature() string {
 	return "20261017000001_create_system_users_table"
 }
 
-// Up 建 system_users 表并写入初始管理员（docs 6.3）。
+// Up 建 system_users 后台用户表（docs 6.3）。
 // 唯一键直接建在业务键上：账号不复用，软删除后同名账号不能再创建。
+// 初始管理员数据由 20261017000007_seed_system_users 负责，建表与数据填充分离。
 func (r *M20261017000001CreateSystemUsersTable) Up() error {
 	if facades.Schema().HasTable("system_users") {
 		return nil
 	}
 
-	if err := facades.DB().Statement(`
+	return facades.DB().Statement(`
 CREATE TABLE system_users (
   id            bigint       NOT NULL COMMENT '主键',
   username      varchar(64)  NOT NULL COMMENT '登录名，唯一',
@@ -46,35 +42,7 @@ CREATE TABLE system_users (
   UNIQUE KEY uk_username (username),
   UNIQUE KEY uk_email (email),
   UNIQUE KEY uk_mobile (mobile)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台用户表'`); err != nil {
-		return err
-	}
-
-	return r.seedAdmin()
-}
-
-// seedAdmin 写入初始管理员 admin / admin123，上线前必须修改密码。
-func (r *M20261017000001CreateSystemUsersTable) seedAdmin() error {
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-
-	_, err = facades.DB().Table("system_users").Insert(map[string]any{
-		"id":         support.NewID(),
-		"username":   "admin",
-		"password":   string(hash),
-		"nickname":   "超级管理员",
-		"status":     1,
-		"creator":    "system",
-		"created_at": now,
-		"updater":    "system",
-		"updated_at": now,
-	})
-
-	return err
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台用户表'`)
 }
 
 // Down Reverse the migrations.

@@ -18,7 +18,11 @@
 | 默认账号 | `admin` / `admin123`（仅本地初始化用）                                                          |
 
 已上线的业务模块：`system`（认证、用户、角色、菜单、字典、登录日志、操作日志）、
-`infra`（参数配置、文件管理、文件配置、API 访问日志、API 错误日志）。
+`infra`（参数配置、文件管理、文件配置、API 访问日志、API 错误日志、短信渠道与模板）、
+`member`（表结构对齐 yudao：`member_user` / `member_level` / `member_point_record` /
+`member_level_record` / `member_sign_record` / `member_tag` / `member_group` / `member_address` /
+`member_social_user` / `member_social_binding` / `member_social_client`；会员档案、等级、标签、分组、
+积分与等级调整、签到与地址只读、微信第三方登录、手机号验证码登录）。
 
 > 定时任务功能已整体移除（代码、迁移、菜单、数据表），不要再引入，除非明确要求。
 
@@ -57,6 +61,7 @@ app/
     base/                  # 认证、响应、错误码、参数、枚举、类型、权限中间件
     system/                # 登录认证、用户、角色、菜单、字典、日志
     infra/                 # 参数配置、文件、文件配置、API 日志
+    member/                # 会员档案（C 端会员，与 system_users 登录账号分离）
       route.go             # 模块路由入口（Register）
       controller/          # 参数绑定 + 调 service + 统一响应
       service/             # 业务规则、事务编排
@@ -192,10 +197,15 @@ func (r *M20261020000013SeedInfraFileConfig) Down() error {
 
 约定：
 
+- **一个表对应一个 `create_*_table.go` 迁移**：文件里只建这一张表（最终结构），不放种子数据，
+  也不把多张表塞进一个文件。需要改表结构时新增迁移（如 `alter_*` / `drop_*`），不要在旧文件上打补丁。
+- **数据填充单独放 `seed_*.go` 迁移**：菜单、初始账号、默认等级、默认短信渠道等一律独立成文件，
+  且必须幂等（先查再插）。种子有依赖时用编号保证顺序（如账号 → 角色 → 绑定）。
 - `Up` 必须幂等（`HasTable` / 先查再插）。
-- 建表用 `facades.DB().Statement("CREATE TABLE ...")`，风格参考 `20261020000008_create_infra_api_access_log_table.go`。
+- 建表用 `facades.DB().Statement("CREATE TABLE ...")`，风格参考 `20261020000030_create_infra_sms_channel_table.go`。
+- **文件名必须与 `Signature()` 完全一致**（不含 `.go`），否则 `migrate:status` 会看到对不上的名字。
 - **已执行的迁移不要修改**，需求变更时新增迁移。
-- 迁移文件删除后，要同步删除 `migrations` 表中对应的执行记录，避免"有记录无文件"。
+- 迁移文件删除或改名后，要同步删除 `migrations` 表中对应的执行记录，避免"有记录无文件"。
 - 删除功能时，若文件已执行过，删除迁移文件不会撤销已做的 DB 变更，需另写清理迁移或手工处理。
 - 权限/菜单变更后前移缓存版本，避免管理员等待 30 分钟：
 
@@ -223,6 +233,65 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - 上传路径：`{dir}/{YYYY}/{MM}/{DD}/{雪花ID}.{ext}`，原文件名保留在 `infra_file.name`。
 - local 地址：`/storage/{path}`；s3 地址：`driver.Url(path)`（依赖 `url` 前缀与 Bucket 公开读）。
 - 删除物理文件时按 `infra_file.config_id` 找到原配置选择磁盘，配置缺失才回落 local。
+
+### 4.9 会员第三方登录
+
+- 渠道：`wechat_mini`（小程序）、`wechat_mp`（公众号）、`wechat_open`（开放平台扫码）。
+- 表：
+  - `member_social_client`：渠道配置（对齐 yudao `system_social_client`），后台页面管理，
+    字段 `name / social_type / client_id / client_secret / agent_id / status`，`uk_social_type` 唯一；
+    `client_secret` 列表不返回，编辑留空表示不修改。
+  - `member_social_user`：`type` + `openid` 唯一（`uk_type_openid`），`unionid` 建普通索引，存昵称 / 头像 / `raw_data`。
+  - `member_social_binding`：`uk_social_user(social_user_id)`、`uk_user_type(user_id, social_type)`；
+    解绑走**物理删除**，否则唯一键会挡住重新绑定。
+- 凭据**只在后台配置**（`会员管理 → 社交客户端`，权限点 `member:social-client:*`），登录时按 `social_type`
+  从 `member_social_client` 读取，**不再用环境变量 / 配置文件**，与 yudao「数据库优先」一致。
+- 登录流程对齐 yudao：`POST /auth/social/login` 是**快捷登录**——已绑定才签发令牌，
+  **未绑定返回业务错误码，不自动注册会员**；新会员先通过手机号等方式登录后，再用
+  `POST /auth/social/bind` 绑定。因此 `member_user.mobile` 保持唯一键（`uk_mobile`）。
+- 会员令牌：`app/modules/member/auth` 调用 `baseAuth.IssueScoped("member", ...)`，
+  Redis 键形如 `auth:member:access:<hash>`；`MemberAuth` 与后台 `TokenAuth` 作用域隔离，令牌互不通用。
+- 路由（`/api/v1/member`）：
+  - 公开：`GET /auth/social/{type}/authorize-url`（小程序返回空串，前端 `wx.login` 取 code）、
+    `POST /auth/social/login`、`POST /auth/refresh`
+  - 会员令牌：`GET /auth/me`、`POST /auth/logout`、`POST /auth/social/bind`、
+    `GET /auth/social/bindings`、`DELETE /auth/social/bindings/{id}`
+  - 后台：`GET /users/{id}/social-bindings`（只读）、`/social-clients` 增删改查（`member:social-client:*`）
+- 解绑保护：至少保留一个绑定，避免会员彻底失去登录方式；登录时会员状态为禁用返回业务错误码。
+- 微信错误码 `40029 / 40163 / 41008 / 42002` 统一映射为「授权码无效」，其余按原始 `errmsg` 透出。
+
+### 4.10 会员手机号登录
+
+- 接口（`/api/v1/member/auth`，均不需要令牌）：
+  - `POST /auth/sms-code` `{mobile, scene}`：发送验证码，`scene` 默认 `login`
+  - `POST /auth/sms-login` `{mobile, code}`：验证码登录，**手机号不存在时自动注册**
+    （昵称默认「用户 + 手机号后 4 位」，等级为 0）
+  - `POST /auth/social-bind-login` `{mobile, code, socialType, socialCode, socialState}`：
+    先手机号登录（注册），再绑定第三方账号，最后签发令牌；绑定失败不签发
+- 验证码规则：6 位数字、Redis 存储 5 分钟有效、一次性使用（校验后即删）、
+  同一手机号 60 秒内不能重发、每日每手机号最多 10 条。
+- **短信能力属于基础设施，放在 infra 模块**（对齐 yudao 把 `system_sms_*` 放 system 的做法）：
+  - 表：`infra_sms_channel`（`name / code / api_key / api_secret / signature / extra / status`，
+    `uk_code` 唯一）、`infra_sms_template`（`channel_id / code / name / type / api_template_id /
+    content / params / status`）。`code` 取值 `DebugLog`（本地日志）/ `AliyunSms`（阿里云 SDK）/
+    `TencentSms`（腾讯云 SDK）；腾讯云的 `region` 与 `sdkAppId` 放 `extra` JSON。
+    `api_secret` 列表不返回，编辑留空表示不修改。
+  - 发送入口：`infra/service.InfraSmsService.Send(ctx, templateCode, mobile, values)`，
+    按模板代码找模板 → 模板绑定的渠道 → 官方 SDK 发送；模板 / 渠道缺失或停用直接返回业务错误码。
+    `content` 用 `{name}` 占位，`params` 是变量名逗号分隔（登录场景为 `code`）。
+  - 后台页面：`基础设施 → 短信渠道` / `短信模板`，权限点 `infra:sms-channel:*` / `infra:sms-template:*`；
+    渠道下仍有模板时不允许删除。迁移已 seed 默认 `DebugLog` 渠道 + 登录模板，开箱可用。
+  - **member 依赖 infra 的发送能力**（`MemberAuthService` 持有 `InfraSmsService`），与 yudao 中
+    member 依赖 system 的短信 / 社交 API 一致；其余模块间不互相依赖。
+- 会员创建走 `MemberRepository.Create`，并发注册靠 `uk_mobile` 唯一键兜底，撞键后回查。
+- 历史坑：20261020000020 迁移**执行后又补了列对齐逻辑**，导致老环境
+  `member_user` / `member_level` / `member_point_record` 停留在旧结构、接口报 `Unknown column`，
+  已用 `20261020000027_align_member_tables_with_yudao_columns` 补迁移修复。
+  **已执行的迁移不要改，需要改就新增迁移。**
+- 历史坑：20261020000020 迁移**执行后又补了列对齐逻辑**，导致老环境
+  `member_user` / `member_level` / `member_point_record` 停留在旧结构、接口报 `Unknown column`，
+  已用 `20261020000027_align_member_tables_with_yudao_columns` 补迁移修复。
+  **已执行的迁移不要改，需要改就新增迁移。**
 
 ---
 

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"eqray-go-starter/app/modules/infra"
+	"eqray-go-starter/app/modules/member"
 	"eqray-go-starter/app/modules/system"
 )
 
@@ -9,4 +10,5 @@ import (
 func Modules() {
 	system.Register()
 	infra.Register()
+	member.Register()
 }

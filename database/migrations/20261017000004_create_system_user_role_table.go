@@ -1,11 +1,7 @@
 package migrations
 
 import (
-	"time"
-
 	"eqray-go-starter/app/facades"
-	"eqray-go-starter/app/modules/base/support"
-	"eqray-go-starter/app/modules/system/model"
 )
 
 type M20261017000004CreateSystemUserRoleTable struct{}
@@ -15,14 +11,15 @@ func (r *M20261017000004CreateSystemUserRoleTable) Signature() string {
 	return "20261017000004_create_system_user_role_table"
 }
 
-// Up 建 system_user_role 关联表（docs 6.3）。
+// Up 建 system_user_role 用户角色关联表（docs 6.3）。
 // 关联表直接硬删除，唯一键建在业务键上（docs 6.8）。
+// 初始授权数据由 20261017000010_seed_system_user_role 负责，建表与数据填充分离。
 func (r *M20261017000004CreateSystemUserRoleTable) Up() error {
 	if facades.Schema().HasTable("system_user_role") {
 		return nil
 	}
 
-	if err := facades.DB().Statement(`
+	return facades.DB().Statement(`
 CREATE TABLE system_user_role (
   id           bigint   NOT NULL COMMENT '主键',
   user_id      bigint   NOT NULL COMMENT '用户 ID',
@@ -34,49 +31,7 @@ CREATE TABLE system_user_role (
   deleted_at   datetime NULL COMMENT '删除时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_user_role (user_id, role_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户角色关联表'`); err != nil {
-		return err
-	}
-
-	return r.seedAdminUserRole()
-}
-
-// seedAdminUserRole 给初始管理员绑定内置角色，保证开箱即用。
-func (r *M20261017000004CreateSystemUserRoleTable) seedAdminUserRole() error {
-	var user model.SystemUserModel
-	var role model.SystemRoleModel
-
-	if err := facades.DB().Table("system_users").
-		Select("id").
-		Where("username", "admin").
-		WhereNull("deleted_at").
-		First(&user); err != nil {
-		return err
-	}
-	if err := facades.DB().Table("system_role").
-		Select("id").
-		Where("code", "SUPER_ADMIN").
-		WhereNull("deleted_at").
-		First(&role); err != nil {
-		return err
-	}
-	if user.ID == 0 || role.ID == 0 {
-		return nil
-	}
-
-	now := time.Now()
-
-	_, err := facades.DB().Table("system_user_role").Insert(map[string]any{
-		"id":         support.NewID(),
-		"user_id":    user.ID,
-		"role_id":    role.ID,
-		"creator":    "system",
-		"created_at": now,
-		"updater":    "system",
-		"updated_at": now,
-	})
-
-	return err
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户角色关联表'`)
 }
 
 // Down Reverse the migrations.

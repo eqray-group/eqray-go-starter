@@ -56,7 +56,9 @@
 ```
 
 - `base` 不含业务表，只持有一张认证日志表（`auth_login_log`），被三个模块共同依赖。
-- `system`、`infra`、`member` **互相不依赖**，各自维护自己的业务表。
+- `system`、`infra`、`member` **除下列场景外互不依赖**，各自维护自己的业务表：
+  - `member` 的短信验证码登录依赖 `infra` 的 `InfraSmsService`（渠道 / 模板配置与 SDK 发送都在 infra），
+    与 yudao 中 member 依赖 system 的短信能力一致；`system` 不依赖任何业务模块。
 - 后台「系统用户」与 C 端「会员」是两套独立账号体系，不共用业务表；共用 base 的认证组件，登录日志以 `user_type` 区分来源。
 
 ### 表归属
@@ -65,8 +67,8 @@
 |---|---|
 | base 模块 | `auth_login_log` |
 | system 模块 | `system_users`、`system_role`、`system_menu`、`system_user_role`、`system_role_menu`、`system_dict_type`、`system_dict_data`、`system_notice`、`system_operate_log` |
-| infra 模块 | `infra_config`、`infra_file`、`infra_file_config`、`infra_job`、`infra_job_log`、`infra_api_access_log`、`infra_api_error_log` |
-| member 模块 | `member_user`、`member_level`、`member_level_record`、`member_point_record`、`member_sign_record`、`member_tag`、`member_tag_ref`、`member_group` |
+| infra 模块 | `infra_config`、`infra_file`、`infra_file_config`、`infra_sms_channel`、`infra_sms_template`、`infra_api_access_log`、`infra_api_error_log` |
+| member 模块 | `member_user`、`member_level`、`member_level_record`、`member_point_record`、`member_sign_record`、`member_tag`、`member_group`、`member_address`、`member_social_client`、`member_social_user`、`member_social_binding` |
 
 > 原则：**谁的表谁来读写**。system 不查 `infra_*` 与 `member_*`，member 不查 `system_*`。`auth_login_log` 由 base 的认证组件独占读写，业务模块只能调用其 Service。
 
@@ -415,7 +417,7 @@ base 只持有一张认证日志表。令牌采用**双令牌 + Redis** 方案�
 | login_ip | varchar(50) | 最后登录 IP |
 | last_login_at | datetime | 最后登录时间 |
 
-索引：`uk_mobile(mobile)`、`idx_level_id(level_id)`。
+索引：`uk_mobile(mobile)`、`idx_level_id(level_id)`、`idx_group_id(group_id)`。
 
 #### member_level 会员等级
 | 字段 | 类型 | 说明 |
@@ -454,11 +456,31 @@ base 只持有一张认证日志表。令牌采用**双令牌 + Redis** 方案�
 #### member_tag 会员标签
 `id`、`name`(varchar 64) + 审计字段。
 
-#### member_tag_ref 会员标签关联
-`id`、`user_id`、`tag_id` + 审计字段。索引：`uk_user_tag(user_id, tag_id)`。
-
 #### member_group 会员分组
 `id`、`name`(varchar 64)、`remark`、`status` + 审计字段。
+
+#### member_address 会员收货地址
+`id`、`user_id`、`name`(收件人)、`mobile`、`area_id`、`detail_address`、`default_status` + 审计字段。索引：`idx_user(user_id)`。
+
+#### member_social_client 会员第三方登录渠道配置
+对齐 yudao 的 `system_social_client`，由后台页面管理。
+`id`、`name`、`social_type`、`client_id`(微信 appid)、`client_secret`(微信 appsecret)、`agent_id`、`status` + 审计字段。
+索引：`uk_social_type(social_type)`。`client_secret` 列表不返回，编辑留空表示不修改。
+
+#### member_social_user 会员第三方账号
+`id`、`type`(渠道：wechat_mini / wechat_mp / wechat_open)、`openid`、`unionid`、`nickname`、`avatar`、`raw_data` + 审计字段。
+索引：`uk_type_openid(type, openid)`、`idx_unionid(unionid)`。
+
+#### infra_sms_channel 短信渠道
+对齐 yudao 的 `system_sms_channel`：渠道凭据存库、后台页面维护，属基础设施能力。
+`id`、`name`、`code`(DebugLog / AliyunSms / TencentSms)、`api_key`、`api_secret`、`signature`、`extra`(JSON，腾讯云 region / sdkAppId)、`status`、`remark` + 审计字段。索引：`uk_code(code)`。
+
+#### infra_sms_template 短信模板
+对齐 yudao 的 `system_sms_template`。`id`、`channel_id`、`code`、`name`、`type`(1 验证码 / 2 通知)、`api_template_id`、`content`(`{name}` 占位)、`params`、`status`、`remark` + 审计字段。索引：`uk_code(code)`、`idx_channel(channel_id)`。
+
+#### member_social_binding 会员第三方绑定
+`id`、`user_id`、`social_type`、`social_user_id` + 审计字段。
+索引：`uk_social_user(social_user_id)`、`uk_user_type(user_id, social_type)`；解绑物理删除，允许重新绑定。
 
 ### 6.6 与 yudao 的差异说明
 
@@ -476,17 +498,22 @@ base 只持有一张认证日志表。令牌采用**双令牌 + Redis** 方案�
 
 ### 6.7 迁移文件规范
 
-- 命名：`YYYYMMDDHHMMSS_create_xxx_table.go`，一一对应单表。
-- 建表顺序：
+- 命名：`YYYYMMDDHHMMSS_snake_case.go`，**文件名必须与 `Signature()` 返回的字符串一致**。
+- **一个表对应一个 `create_*_table.go`**：只建这一张表，且直接建出最终结构（含索引与注释），
+  不放种子数据，也不把多张表塞进同一个文件；表结构变更通过新增迁移完成。
+- **数据填充单独放 `seed_*.go`**：菜单、初始账号、默认等级、默认短信渠道等各自独立成文件，
+  内容必须幂等（先查再插）。有依赖的种子用编号保证顺序（账号 → 角色 → 授权 → 菜单）。
+- 建表顺序（编号即顺序）：
   1. **base**：`auth_login_log`
-  2. **system**：`system_users` → `system_role` → `system_menu` → `system_user_role` → `system_role_menu` → `system_dict_type` → `system_dict_data` → `system_notice` → `system_operate_log`
-  3. **infra**：`infra_config` → `infra_file_config` → `infra_file` → `infra_job` → `infra_job_log` → `infra_api_access_log` → `infra_api_error_log`
-  4. **member**：`member_level` → `member_user` → `member_level_record` → `member_point_record` → `member_sign_record` → `member_tag` → `member_tag_ref` → `member_group`
+  2. **system**：`system_users` → `system_menu` → `system_role` → `system_user_role` → `system_role_menu` → `system_dict_type` → `system_dict_data` → `system_notice` → `system_operate_log`
+  3. **infra**：`infra_config` → `infra_file_config` → `infra_file` → `infra_sms_channel` → `infra_sms_template` → `infra_api_access_log` → `infra_api_error_log`
+  4. **member**：`member_level` → `member_user` → `member_level_record` → `member_point_record` → `member_sign_record` → `member_tag` → `member_group` → `member_address` → `member_social_client` → `member_social_user` → `member_social_binding`
 - 每个迁移的 `Down()` 必须实现 `DropIfExists`，保证可回滚。
 - 表名在迁移中显式指定，同时把 Model 的表名方法写死，避免复数化推导歧义。
 - 建表必须写**表注释与列注释**：表注释与本文档的表标题一致，列注释取自 6.x 的字段说明（状态类字段注明取值含义）。Schema Builder 用 `table.Comment("后台用户表")` / `table.String("nickname", 64).Comment("昵称")`，原生 SQL 用 `COMMENT='...'`。`SHOW CREATE TABLE` 与 DBA 排查都靠它。
 - 日志类表（`*_log`）数据量大，建议建表时即按 `created_at` 建索引，并规划定期归档。
 - 唯一键直接建在业务键上，不使用 `deleted_key` 生成列；关联表解除关系时用物理删除，避免占用唯一键（6.8(4)、SQL 写法见 15.9）。
+- 迁移文件删除或改名后，同步删除 `migrations` 表中对应执行记录；`bootstrap/migrations.go` 必须手工注册每一个迁移。
 
 ### 6.8 唯一约束约定
 
@@ -571,8 +598,10 @@ CREATE TABLE system_users (
 | `member_user` | `uk_mobile` | 手机号即账号，删除后不复用 |
 | `member_level` | `uk_level` | 删除等级前需确认无会员占用，属于 Service 职责 |
 | `member_sign_record` | `uk_user_day(user_id, day)` | 见 (3) |
-| `member_tag_ref` | `uk_user_tag(user_id, tag_id)` | 见 (4)，物理删除 |
-| `member_tag` / `member_group` / `system_notice` / `auth_login_log` / `system_operate_log` / `infra_api_*_log` | 无 | — | 名称类字段允许重复或由业务层保证，日志表只追加 |
+| `member_social_client` | `uk_social_type(social_type)` | 每渠道一条配置 |
+| `member_social_user` | `uk_type_openid(type, openid)` | 同一渠道下 openid 唯一 |
+| `member_social_binding` | `uk_social_user(social_user_id)` / `uk_user_type(user_id, social_type)` | 见 (4)，解绑物理删除 |
+| `member_tag` / `member_group` / `member_address` / `system_notice` / `auth_login_log` / `system_operate_log` / `infra_api_*_log` | 无 | — | 名称类字段允许重复或由业务层保证，日志表只追加 |
 
 > 唯一键只保护「值唯一」，不保护「语义正确」：`member_user.level_id` 指向已删除等级、`system_user_role.role_id` 指向不存在的角色，数据库都不作约束（本项目不建物理外键，见 6.1），一致性由 Service 层负责。
 
@@ -640,15 +669,33 @@ CREATE TABLE system_users (
 │   └── api-logs/{access,error}     API 访问 / 错误日志
 │
 └── member/                          # 会员端
-    ├── auth/{register,login,logout,refresh,forgot}
+    ├── auth/{sms-code,sms-login,social-bind-login}
+    ├── auth/{social/login,refresh,logout,me}
+    ├── auth/social/{authorize-url,bind,bindings}
     ├── profile                     我的资料
-    ├── password                    修改密码
-    ├── levels                      会员等级列表
-    ├── points                      我的积分明细
     └── sign                        每日签到
 ```
 
-后台管理会员数据的路由（会员列表、禁用、调整等级与积分）挂在 `/api/v1/system/members`，但**实现代码位于 member 模块**，由 `member.RegisterAdmin()` 注册到 system 路由组，受 base 的 `permission` 中间件保护。这样既保证「表归 member 模块」，又让前端按系统管理归类。
+后台短信配置页挂在 `/api/v1/infra/sms-channels` 与 `/api/v1/infra/sms-templates`，
+权限点 `infra:sms-channel:*` / `infra:sms-template:*`；会员端 `/api/v1/member/auth/sms-*` 只负责
+验证码的生成、校验与登录态，发送动作委托 infra 的 `InfraSmsService`。
+
+会员端登录态与后台登录态使用**同一套双令牌实现、不同的 Redis 作用域**：
+会员令牌落在 `auth:member:access:<hash>`，由 `member/middleware.MemberAuth` 校验，后台 `TokenAuth` 无法识别，
+反之亦然。第三方渠道（微信小程序 / 公众号 / 开放平台）的凭据放在 `member_social_client` 表，
+由后台 `会员管理 → 社交客户端` 页面配置（对齐 yudao 的 `system_social_client`，数据库优先，不走环境变量）。
+
+会员手机号登录（`sms-login`）与第三方绑定登录（`social-bind-login`）共用 `createUserIfAbsent` 语义：
+手机号不存在即创建会员（昵称默认「用户 + 后 4 位」），手机号已存在则直接登录。
+短信验证码存 Redis：6 位数字、5 分钟有效、一次性消费、单手机号 60 秒发送间隔、每日上限 10 条；
+**短信是基础设施能力，渠道与模板配置在 infra 模块**（`infra_sms_channel` / `infra_sms_template`，
+对齐 yudao 把 `system_sms_*` 放 system 的做法），后台 `基础设施 → 短信渠道 / 短信模板` 维护，
+member 通过 `infra/service.InfraSmsService.Send` 复用发送能力（与 yudao 中 member 依赖 system 一致），
+渠道实现按 `code` 选择官方 SDK：`DebugLog`（本地日志，默认）、`AliyunSms`（阿里云 `dysmsapi` SDK）、
+`TencentSms`（腾讯云 `sms/v20210111` SDK）。
+
+后台管理会员数据的路由统一挂在 `/api/v1/member/*`，由 `member.Register()` 注册，
+受 base 的 `token_auth` + `permission` 中间件保护；会员端 `/api/v1/member/auth/*` 不经过后台权限体系。
 
 `system/logs/login` 的数据来自 base 的认证组件，system 通过其 Service 读取，不直接查 `auth_login_log`。
 

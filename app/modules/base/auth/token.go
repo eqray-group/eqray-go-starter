@@ -40,6 +40,14 @@ type TokenPair struct {
 // 两个令牌都是 32 字节随机串，服务端只在 Redis 保存它的 SHA-256，
 // 这样 Redis 被读走也拿不到可用令牌，同时天然支持「删除即失效」。
 func Issue(userID types.ID) (*TokenPair, error) {
+	return IssueScoped("", userID)
+}
+
+// IssueScoped 按作用域签发令牌。
+//
+// scope 为空表示后台账号；会员侧传 "member"，Redis 键会多一层前缀，
+// 两套令牌因此互不通用——后台令牌调不了会员接口，反之亦然。
+func IssueScoped(scope string, userID types.ID) (*TokenPair, error) {
 	accessTTL, refreshTTL := ttl()
 	value := userID.String()
 
@@ -52,11 +60,11 @@ func Issue(userID types.ID) (*TokenPair, error) {
 		return nil, err
 	}
 
-	if err := facades.Cache().Put(key(accessKind, accessToken), value, accessTTL); err != nil {
+	if err := facades.Cache().Put(key(scope, accessKind, accessToken), value, accessTTL); err != nil {
 		return nil, err
 	}
-	if err := facades.Cache().Put(key(refreshKind, refreshToken), value, refreshTTL); err != nil {
-		facades.Cache().Forget(key(accessKind, accessToken))
+	if err := facades.Cache().Put(key(scope, refreshKind, refreshToken), value, refreshTTL); err != nil {
+		facades.Cache().Forget(key(scope, accessKind, accessToken))
 		return nil, err
 	}
 
@@ -70,11 +78,16 @@ func Issue(userID types.ID) (*TokenPair, error) {
 
 // Resolve 用访问令牌换取用户 ID；令牌不存在或已过期时返回未登录错误。
 func Resolve(accessToken string) (types.ID, error) {
+	return ResolveScoped("", accessToken)
+}
+
+// ResolveScoped 按作用域解析访问令牌，scope 语义与 IssueScoped 一致。
+func ResolveScoped(scope, accessToken string) (types.ID, error) {
 	if accessToken == "" {
 		return 0, unauthorized()
 	}
 
-	raw := facades.Cache().GetString(key(accessKind, accessToken))
+	raw := facades.Cache().GetString(key(scope, accessKind, accessToken))
 	if raw == "" {
 		return 0, unauthorized()
 	}
@@ -90,11 +103,16 @@ func Resolve(accessToken string) (types.ID, error) {
 // Refresh 用刷新令牌换一对新令牌，并把旧刷新令牌作废（轮换）。
 // 旧的访问令牌按自己的短 TTL 自然过期，不额外维护黑名单。
 func Refresh(refreshToken string) (*TokenPair, error) {
+	return RefreshScoped("", refreshToken)
+}
+
+// RefreshScoped 按作用域续期，换出的新令牌仍属于同一作用域。
+func RefreshScoped(scope, refreshToken string) (*TokenPair, error) {
 	if refreshToken == "" {
 		return nil, unauthorized()
 	}
 
-	raw := facades.Cache().GetString(key(refreshKind, refreshToken))
+	raw := facades.Cache().GetString(key(scope, refreshKind, refreshToken))
 	if raw == "" {
 		return nil, unauthorized()
 	}
@@ -104,18 +122,23 @@ func Refresh(refreshToken string) (*TokenPair, error) {
 		return nil, unauthorized()
 	}
 
-	facades.Cache().Forget(key(refreshKind, refreshToken))
+	facades.Cache().Forget(key(scope, refreshKind, refreshToken))
 
-	return Issue(types.ID(id))
+	return IssueScoped(scope, types.ID(id))
 }
 
 // Revoke 登出时删除两个令牌，立即失去访问权与续期能力。
 func Revoke(accessToken, refreshToken string) {
+	RevokeScoped("", accessToken, refreshToken)
+}
+
+// RevokeScoped 按作用域注销令牌。
+func RevokeScoped(scope, accessToken, refreshToken string) {
 	if accessToken != "" {
-		facades.Cache().Forget(key(accessKind, accessToken))
+		facades.Cache().Forget(key(scope, accessKind, accessToken))
 	}
 	if refreshToken != "" {
-		facades.Cache().Forget(key(refreshKind, refreshToken))
+		facades.Cache().Forget(key(scope, refreshKind, refreshToken))
 	}
 }
 
@@ -129,11 +152,16 @@ func BearerToken(header string) string {
 	return header
 }
 
-// key 生成 Redis 键：{prefix}:{kind}:{sha256(token)}，不落明文令牌。
-func key(kind, token string) string {
+// key 生成 Redis 键：{prefix}[:{scope}]:{kind}:{sha256(token)}，不落明文令牌。
+func key(scope, kind, token string) string {
 	sum := sha256.Sum256([]byte(token))
 
-	return facades.Config().GetString("token.prefix", defaultPrefix) + ":" + kind + ":" + hex.EncodeToString(sum[:])
+	prefix := facades.Config().GetString("token.prefix", defaultPrefix)
+	if scope != "" {
+		prefix += ":" + scope
+	}
+
+	return prefix + ":" + kind + ":" + hex.EncodeToString(sum[:])
 }
 
 // ttl 读取令牌有效期，配置为秒，缓存接口用 time.Duration。
