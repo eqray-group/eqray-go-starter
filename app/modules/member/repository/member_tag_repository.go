@@ -97,6 +97,29 @@ func (r *MemberTagRepository) FindByID(ctx context.Context, id types.ID) (*model
 	return &m, nil
 }
 
+// FindByIDs 批量查询标签，供 C 端「我的资料」一次性带出标签名，避免 N+1。
+func (r *MemberTagRepository) FindByIDs(ctx context.Context, ids []types.ID) ([]model.MemberTagModel, error) {
+	list := make([]model.MemberTagModel, 0)
+	if len(ids) == 0 {
+		return list, nil
+	}
+
+	values := make([]any, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, id)
+	}
+
+	if err := facades.DB().WithContext(ctx).Table(tagTable).
+		WhereIn("id", values).
+		WhereNull("deleted_at").
+		OrderBy("id").
+		Get(&list); err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
 func (r *MemberTagRepository) Enabled(ctx context.Context) ([]model.MemberTagModel, error) {
 	list := make([]model.MemberTagModel, 0)
 

@@ -62,5 +62,8 @@ func Migrations() []schema.Migration {
 		&migrations.M20261020000027CreateMemberAddressTable{},
 		&migrations.M20261020000028CreateMemberSocialUserTable{},
 		&migrations.M20261020000029CreateMemberSocialBindingTable{},
+		&migrations.M20261020000034CreateMemberSignInConfigTable{},
+		&migrations.M20261020000036SeedMemberSignInConfig{},
+		&migrations.M20261020000037SeedMemberSignConfigMenu{},
 	}
 }

@@ -548,6 +548,44 @@ declare namespace Api {
       sort: number
     }
 
+    /** 签到奖励档位（对齐 yudao member_sign_in_config） */
+    interface SignConfigItem {
+      id: string
+      /** 连续签到第几天，从 1 开始 */
+      day: number
+      /** 该档位奖励积分 */
+      point: number
+      /** 该档位奖励经验 */
+      experience: number
+      /** 0 禁用 / 1 启用 */
+      status: number
+      createdAt?: string
+      updatedAt?: string
+    }
+
+    /** 签到档位列表 */
+    interface SignConfigList {
+      list: SignConfigItem[]
+      total: number
+    }
+
+    /** 签到档位搜索参数 */
+    interface SignConfigSearchParams {
+      /** 连续签到第几天 */
+      day?: number
+      status?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 签到档位新增 / 编辑参数 */
+    interface SignConfigSaveParams {
+      day: number
+      point: number
+      experience: number
+      status: number
+    }
+
     /** 积分记录（对齐 yudao member_point_record） */
     interface PointRecordItem {
       id: string

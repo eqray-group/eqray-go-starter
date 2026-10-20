@@ -20,6 +20,7 @@ func Register() {
 	tagController := controller.NewMemberTagController()
 	groupController := controller.NewMemberGroupController()
 	socialClientController := controller.NewMemberSocialClientController()
+	signConfigController := controller.NewMemberSignConfigController()
 
 	facades.Route().Prefix(Prefix).Group(func(r route.Router) {
 		auth := r.Middleware(&baseMiddleware.TokenAuth{})
@@ -92,6 +93,16 @@ func Register() {
 			Put("/groups/{id}", groupController.Update)
 		perm("member:group:delete").Middleware(operate("会员管理", "删除分组")).
 			Delete("/groups/{id}", groupController.Destroy)
+
+		// ---------- 签到奖励档位 ----------
+		// 签到记录在 C 端生成，这里只维护连续第 N 天发多少积分 / 经验
+		perm("member:sign-config:list").Get("/sign-configs", signConfigController.Index)
+		perm("member:sign-config:create").Middleware(operate("会员管理", "新增签到档位")).
+			Post("/sign-configs", signConfigController.Store)
+		perm("member:sign-config:update").Middleware(operate("会员管理", "编辑签到档位")).
+			Put("/sign-configs/{id}", signConfigController.Update)
+		perm("member:sign-config:delete").Middleware(operate("会员管理", "删除签到档位")).
+			Delete("/sign-configs/{id}", signConfigController.Destroy)
 
 		// ---------- 第三方登录渠道配置 ----------
 		perm("member:social-client:list").Get("/social-clients", socialClientController.Index)

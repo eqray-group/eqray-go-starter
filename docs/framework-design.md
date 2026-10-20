@@ -656,8 +656,12 @@ CREATE TABLE system_users (
 │       ├── auth/{sms-code,sms-login,social-bind-login}
 │       ├── auth/{social/login,refresh,logout,me}
 │       ├── auth/social/{authorize-url,bind,bindings}
-│       ├── profile                 我的资料
-│       └── sign                    每日签到
+│       ├── profile                 我的资料（GET / PUT）
+│       ├── addresses               我的收货地址（增删改查 + 设默认）
+│       ├── sign                    每日签到（POST /sign、GET /sign/status、GET /sign/records）
+│       ├── points/records          我的积分流水
+│       ├── level/records           我的等级变更记录
+│       └── levels                  等级列表 + 我的进度
 │
 ├── system/                          # 后台管理端
 │   ├── auth/{login,logout,refresh,captcha}

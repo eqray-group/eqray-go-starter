@@ -1,6 +1,10 @@
 package support
 
-import "context"
+import (
+	"context"
+
+	"eqray-go-starter/app/modules/base/types"
+)
 
 type userIDKey struct{}
 
@@ -29,12 +33,13 @@ func WithMemberID(ctx context.Context, id int64) context.Context {
 }
 
 // MemberID 从上下文取当前登录会员，未登录或未注入时返回 0。
-func MemberID(ctx context.Context) int64 {
+func MemberID(ctx context.Context) types.ID {
 	if ctx == nil {
 		return 0
 	}
 	if v, ok := ctx.Value(memberIDKey{}).(int64); ok {
-		return v
+		return types.ID(v)
 	}
+
 	return 0
 }

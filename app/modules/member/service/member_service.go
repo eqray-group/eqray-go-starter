@@ -19,6 +19,8 @@ import (
 const (
 	MemberPointBizOther  int8 = 0
 	MemberPointBizAdjust int8 = 10
+	// MemberPointBizSign 签到获得的积分
+	MemberPointBizSign int8 = 20
 )
 
 // MemberSaveInput 是新增 / 编辑会员的入参，由 Controller 从请求体转换而来。
@@ -84,6 +86,19 @@ func (s *MemberService) Detail(ctx context.Context, id types.ID) (*model.MemberU
 	}
 	if m == nil {
 		return nil, baseErrs.New(memberErrs.MemberNotExists, id)
+	}
+
+	return m, nil
+}
+
+// EnsureActive 校验会员存在且为启用状态，供 C 端只读接口复用。
+func (s *MemberService) EnsureActive(ctx context.Context, id types.ID) (*model.MemberUserModel, error) {
+	m, err := s.Detail(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if m.Status != baseEnums.CommonStatusEnabled {
+		return nil, baseErrs.New(memberErrs.MemberDisabled)
 	}
 
 	return m, nil

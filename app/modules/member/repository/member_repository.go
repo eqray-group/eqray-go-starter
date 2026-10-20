@@ -100,6 +100,28 @@ func (r *MemberRepository) Update(ctx context.Context, m *model.MemberUserModel)
 	return err
 }
 
+// UpdateProfile 只更新会员自助可改的字段。
+// 手机号、积分、等级、分组、标签、状态属于后台或独立流程，不走这里，避免越权覆盖。
+func (r *MemberRepository) UpdateProfile(ctx context.Context, m *model.MemberUserModel) error {
+	m.FillUpdate(ctx)
+
+	_, err := facades.DB().WithContext(ctx).Table(memberTable).
+		Where("id", m.ID).
+		WhereNull("deleted_at").
+		Update(map[string]any{
+			"nickname":   m.Nickname,
+			"avatar":     m.Avatar,
+			"name":       m.Name,
+			"sex":        m.Sex,
+			"birthday":   m.Birthday,
+			"area_id":    m.AreaID,
+			"updater":    m.Updater,
+			"updated_at": m.UpdatedAt,
+		})
+
+	return err
+}
+
 // UpdatePoint 在事务内更新积分余额，与积分记录写入保持原子性。
 func (r *MemberRepository) UpdatePoint(ctx context.Context, tx db.Tx, m *model.MemberUserModel) error {
 	m.FillUpdate(ctx)

@@ -38,6 +38,20 @@ func (p *Page) Normalize() error {
 	return nil
 }
 
+// FromQuery 从查询串解析分页参数：pageNo 小于 1 时取 1，pageSize 缺省取 DefaultPageSize。
+// 各模块的分页接口统一用它，避免每处重复拼 Page 再 Normalize。
+func FromQuery(ctx http.Context) (Page, error) {
+	page := Page{
+		PageNo:   ctx.Request().QueryInt("pageNo", defaultPageNo),
+		PageSize: ctx.Request().QueryInt("pageSize", DefaultPageSize),
+	}
+	if err := page.Normalize(); err != nil {
+		return page, err
+	}
+
+	return page, nil
+}
+
 // Validatable 是请求参数需要实现的校验规则接口。
 type Validatable interface {
 	Rules(ctx http.Context) map[string]any

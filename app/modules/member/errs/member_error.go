@@ -4,7 +4,8 @@ package errs
 import baseErrs "eqray-go-starter/app/modules/base/errs"
 
 // member 模块业务错误码：1-003-{子模块}-{错误码}，
-// user 占用 001，level 占用 002，tag 占用 003，group 占用 004，social 占用 005，auth 占用 006。
+// user 占用 001，level 占用 002，tag 占用 003，group 占用 004，social 占用 005，auth 占用 006，
+// address 占用 007，sign 占用 008。
 var (
 	MemberNotExists    = baseErrs.ErrorCode{Code: 1_003_001_001, Msg: "会员【%v】不存在"}
 	MemberMobileExists = baseErrs.ErrorCode{Code: 1_003_001_002, Msg: "手机号【%v】已被其他会员使用"}
@@ -43,4 +44,15 @@ var (
 	MemberSmsChannelCodeExists  = baseErrs.ErrorCode{Code: 1_003_006_008, Msg: "短信渠道代码【%v】已存在"}
 	MemberSmsTemplateCodeExists = baseErrs.ErrorCode{Code: 1_003_006_009, Msg: "短信模板代码【%v】已存在"}
 	MemberSmsChannelInUse       = baseErrs.ErrorCode{Code: 1_003_006_010, Msg: "渠道【%v】下仍有模板，不可删除"}
+
+	// address 占用 007 子模块：C 端会员自助维护收货地址
+	MemberAddressNotExists     = baseErrs.ErrorCode{Code: 1_003_007_001, Msg: "收货地址【%v】不存在"}
+	MemberAddressLimitExceeded = baseErrs.ErrorCode{Code: 1_003_007_002, Msg: "收货地址最多保存 %v 条"}
+
+	// sign 占用 008 子模块：C 端每日签到与签到奖励档位
+	MemberSignDuplicated      = baseErrs.ErrorCode{Code: 1_003_008_001, Msg: "今天已经签到过了，明天再来吧"}
+	MemberSignFailed          = baseErrs.ErrorCode{Code: 1_003_008_002, Msg: "签到失败，请稍后重试"}
+	MemberSignConfigMissing   = baseErrs.ErrorCode{Code: 1_003_008_003, Msg: "签到奖励档位未配置，请联系管理员"}
+	MemberSignConfigNotExists = baseErrs.ErrorCode{Code: 1_003_008_004, Msg: "签到档位【%v】不存在"}
+	MemberSignConfigDayExists = baseErrs.ErrorCode{Code: 1_003_008_005, Msg: "第【%v】天的签到档位已存在"}
 )

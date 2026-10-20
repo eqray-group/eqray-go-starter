@@ -7,7 +7,7 @@ import (
 
 const MemberAddressTable = "member_address"
 
-// MemberAddressModel 对应 member_address 表，后台以只读方式展示会员收货地址。
+// MemberAddressModel 对应 member_address 表：由 C 端会员自助维护，后台只读展示。
 type MemberAddressModel struct {
 	baseModel.BaseModel
 	UserID        types.ID `db:"user_id" json:"userId"`

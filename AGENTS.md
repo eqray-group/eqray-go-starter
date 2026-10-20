@@ -194,7 +194,8 @@ if err := param.Bind(ctx, &req); err != nil {
 }
 ```
 
-分页统一用 `param.Page{PageNo, PageSize}` + `Normalize()`，默认页大小见 `param.DefaultPageSize`。
+分页统一用 `param.FromQuery(ctx)`（内部已调 `Normalize()`，非法 pageSize 自动报 400），
+默认页大小见 `param.DefaultPageSize`；不要再在每个 Index 里手拼 `param.Page{}`。
 
 ### 4.5 权限与路由
 
@@ -340,6 +341,38 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
   `member_user` / `member_level` / `member_point_record` 停留在旧结构、接口报 `Unknown column`，
   已用 `20261020000027_align_member_tables_with_yudao_columns` 补迁移修复。
   **已执行的迁移不要改，需要改就新增迁移。**
+
+### 4.11 C 端会员自助接口
+
+都在 `member/client/route.go` 的 `memberAuth` 分组下，前缀 `/api/v1/client/member`；
+会员身份一律取 `support.MemberID(ctx.Context())`，请求体与路径都**不接受 memberId**。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/profile` | 我的资料（等级名、下一等级所需经验、标签名、分组名） |
+| PUT | `/profile` | 改昵称 / 头像 / 姓名 / 性别 / 生日 / 地区；手机号、积分、等级不可自助改 |
+| GET | `/addresses` | 我的地址，默认地址排最前 |
+| POST | `/addresses` | 新增地址，首条自动默认，单体上限 20 条 |
+| PUT | `/addresses/{id}` | 编辑地址内容（默认标记只能走下面的接口改） |
+| DELETE | `/addresses/{id}` | 删除地址（软删） |
+| PUT | `/addresses/{id}/default` | 设为默认：事务内先清同会员默认标记再设置 |
+| POST | `/sign` | 每日签到：写签到记录 + 加积分 + 写积分流水，同一事务 |
+| GET | `/sign/status` | 今日是否已签、连续天数、累计天数、本月已签日期、今日可得积分 |
+| GET | `/sign/records` | 签到记录（分页） |
+| GET | `/points/records` | 积分流水（分页） |
+| GET | `/level/records` | 等级变更记录（分页） |
+| GET | `/levels` | 启用等级列表 + 我的等级与经验 |
+
+约定：
+
+- 签到奖励积分读 `infra_config` 的 `member.sign.point`（迁移 `20261020000034` 已 seed，默认 1），
+  后台改完下一次签到生效；未配置或值非法时回落 1。
+- 签到幂等：先查当日记录，并发由 `uk_user_date (user_id, sign_date)` 兜底，撞键转 `MemberSignDuplicated`。
+- 地址默认互斥在 `MemberAddressService.SetDefault` 的事务里完成，`member_address` 没有唯一键，
+  **不要**改成只用一条 UPDATE 了事。
+- 积分流水 `biz_type`：0 其它 / 10 后台调整 / 20 签到 / 30 消费（预留）。
+- C 端只读接口统一先过 `MemberService.EnsureActive`，禁用会员一律报 `MemberDisabled`。
+- 地址与签到分别占用错误码子模块 `007` / `008`。
 
 ---
 
