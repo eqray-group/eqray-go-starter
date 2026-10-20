@@ -11,7 +11,7 @@
 | -------- | ----------------------------------------------------------------------------------------------- |
 | 后端     | Go 1.25、Goravel 1.18（底层 Gin）、MySQL 8、Redis                                               |
 | 前端     | Vue 3.5、Vite 7、TypeScript、Element Plus 2.11、Tailwind 4、Pinia（`ui/`，Art Design Pro 风格） |
-| 端口     | 后端 `3000`，前端 `3006`（开发环境代理 `/api` 到 3000）                                         |
+| 端口     | 后端 `11111`，前端 `22222`（开发环境代理 `/api` 到 11111）                                      |
 | 认证     | 账号密码 + 图形验证码，访问令牌 / 刷新令牌双令牌                                                |
 | 权限     | RBAC，权限点形如 `system:user:create`；超管角色 `SUPER_ADMIN` 直接放行                          |
 | 菜单     | `VITE_ACCESS_MODE=backend`，前端路由由后端 `system_menu` 下发                                   |
@@ -32,7 +32,7 @@
 
 ```bash
 # 后端
-go run .                              # 启动，http://127.0.0.1:3000
+go run .                              # 启动，http://127.0.0.1:11111
 go run . artisan migrate              # 执行迁移
 go run . artisan migrate:status       # 查看迁移状态
 go run . artisan key:generate         # 生成 APP_KEY
@@ -41,7 +41,7 @@ go vet ./...                          # 静态检查
 
 # 前端（ui/）
 pnpm install
-pnpm dev                              # http://127.0.0.1:3006
+pnpm dev                              # http://127.0.0.1:22222
 pnpm build                            # vue-tsc --noEmit && vite build
 npx vue-tsc --noEmit                  # 仅类型检查
 npx eslint "src/views/xxx" --fix      # 格式化 + 规范修复

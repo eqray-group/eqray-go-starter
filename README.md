@@ -55,7 +55,7 @@ go run . artisan migrate
 
 ```bash
 go run .
-# http://127.0.0.1:3000
+# http://127.0.0.1:11111
 ```
 
 ### 4. 启动前端
@@ -64,7 +64,7 @@ go run .
 cd ui
 pnpm install
 pnpm dev
-# http://127.0.0.1:3006，开发环境代理到 3000
+# http://127.0.0.1:22222，开发环境代理到 11111
 ```
 
 ## 默认账号
