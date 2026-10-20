@@ -37,7 +37,7 @@
           </ElDescriptions>
         </ElTabPane>
 
-        <ElTabPane label="积分记录" name="points">
+        <ElTabPane label="积分记录" name="points" lazy>
           <div class="flex items-center justify-between mb-3">
             <span class="text-sm text-g-600">当前积分：{{ member?.point ?? 0 }}</span>
             <ElButton v-auth="'member:user:points'" type="primary" size="small" @click="openPoint">
@@ -51,13 +51,13 @@
             :columns="pointColumns"
             :pagination="pointPagination"
             :show-table-header="false"
-            height="260"
-            empty-height="180px"
+            height="300"
+            empty-height="300"
             @pagination:current-change="handlePointPageChange"
           />
         </ElTabPane>
 
-        <ElTabPane label="等级记录" name="levels">
+        <ElTabPane label="等级记录" name="levels" lazy>
           <div class="flex justify-end mb-3">
             <ElButton v-auth="'member:user:level'" type="primary" size="small" @click="openLevel">
               调整等级
@@ -70,44 +70,44 @@
             :columns="levelColumns"
             :pagination="levelPagination"
             :show-table-header="false"
-            height="260"
-            empty-height="180px"
+            height="300"
+            empty-height="300"
             @pagination:current-change="handleLevelPageChange"
           />
         </ElTabPane>
 
-        <ElTabPane label="签到记录" name="signs">
+        <ElTabPane label="签到记录" name="signs" lazy>
           <ArtTable
             :loading="signLoading"
             :data="signRecords"
             :columns="signColumns"
             :pagination="signPagination"
             :show-table-header="false"
-            height="260"
-            empty-height="180px"
+            height="300"
+            empty-height="300"
             @pagination:current-change="handleSignPageChange"
           />
         </ElTabPane>
 
-        <ElTabPane label="收货地址" name="addresses">
+        <ElTabPane label="收货地址" name="addresses" lazy>
           <ArtTable
             :loading="addressLoading"
             :data="addresses"
             :columns="addressColumns"
             :show-table-header="false"
-            height="240"
-            empty-height="180px"
+            height="300"
+            empty-height="300"
           />
         </ElTabPane>
 
-        <ElTabPane label="第三方绑定" name="socials">
+        <ElTabPane label="第三方绑定" name="socials" lazy>
           <ArtTable
             :loading="socialLoading"
             :data="socialBindings"
             :columns="socialColumns"
             :show-table-header="false"
-            height="240"
-            empty-height="180px"
+            height="300"
+            empty-height="300"
           />
         </ElTabPane>
       </ElTabs>

@@ -3,7 +3,12 @@
 <!-- 扩展功能：分页组件、渲染自定义列、loading、表格全局边框、斑马纹、表格尺寸、表头背景配置 -->
 <!-- 获取 ref：默认暴露了 elTableRef 外部通过 ref.value.elTableRef 可以调用 el-table 方法 -->
 <template>
-  <div class="art-table" :class="{ 'is-empty': isEmpty }" :style="containerHeight">
+  <div
+    ref="tableRootRef"
+    class="art-table"
+    :class="{ 'is-empty': isEmpty }"
+    :style="containerHeight"
+  >
     <ElTable ref="elTableRef" v-loading="!!loading" v-bind="mergedTableProps">
       <template v-for="col in columns" :key="col.prop || col.type">
         <!-- 渲染全局序号列 -->
@@ -84,6 +89,7 @@
   defineOptions({ name: 'ArtTable' })
 
   const { width } = useWindowSize()
+  const tableRootRef = ref<HTMLElement>()
   const elTableRef = ref<InstanceType<typeof ElTable> | null>(null)
   const paginationRef = ref<HTMLElement>()
   const tableHeaderRef = ref<HTMLElement>()
@@ -215,6 +221,22 @@
         tableHeaderHeight.value = entry.contentRect.height
       })
     }
+  })
+
+  // 容器宽度变化时重新布局列宽。
+  // 表格在 Tab / 弹窗等隐藏容器中挂载时容器宽度为 0，Element Plus 会把列宽算成固定列之和，
+  // 之后容器可见也不会自动重算，表现为表头只占左侧一小块、与内容错位。
+  let lastTableWidth = -1
+  useResizeObserver(tableRootRef, (entries) => {
+    const entry = entries[0]
+    if (!entry) return
+
+    const currentWidth = Math.round(entry.contentRect.width)
+    const needRelayout = currentWidth > 0 && currentWidth !== lastTableWidth
+    lastTableWidth = currentWidth
+    if (!needRelayout) return
+
+    requestAnimationFrame(() => elTableRef.value?.doLayout())
   })
 
   // 分页器与表格之间的间距常量（计算属性，响应 showTableHeader 变化）
