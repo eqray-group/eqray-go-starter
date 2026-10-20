@@ -15,12 +15,13 @@ type MemberSignConfigController struct {
 	service *service.MemberSignConfigService
 }
 
+// NewMemberSignConfigController 构造签到奖励档位控制器。
 func NewMemberSignConfigController() *MemberSignConfigController {
 	return &MemberSignConfigController{service: service.NewMemberSignConfigService()}
 }
 
-// Index GET /api/v1/member/sign-configs
-// 支持 day（签到天数）与 status（状态）两个可选筛选条件。
+// Index 分页查询签到奖励档位，按连续签到天数升序。
+// 入参：day（签到天数）、status（状态）、pageNo、pageSize（查询串，均可选）；返回档位列表与总数。
 func (c *MemberSignConfigController) Index(ctx http.Context) http.Response {
 	page, err := param.FromQuery(ctx)
 	if err != nil {
@@ -47,7 +48,8 @@ func (c *MemberSignConfigController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Store POST /api/v1/member/sign-configs
+// Store 新增签到奖励档位；同一天只能有一条档位，重复时返回业务错误码。
+// 入参：day（1~31）、point、experience、status；返回 null。
 func (c *MemberSignConfigController) Store(ctx http.Context) http.Response {
 	var req request.MemberSignConfigRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -66,7 +68,8 @@ func (c *MemberSignConfigController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Update PUT /api/v1/member/sign-configs/{id}
+// Update 编辑签到奖励档位，同样校验天数不与其他档位重复。
+// 入参：路径 id + day、point、experience、status；返回 null。
 func (c *MemberSignConfigController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -90,7 +93,8 @@ func (c *MemberSignConfigController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/member/sign-configs/{id}
+// Destroy 删除签到奖励档位；至少保留一条启用中的档位，否则返回业务错误码。
+// 入参：路径 id；返回 null。
 func (c *MemberSignConfigController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

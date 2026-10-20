@@ -17,7 +17,8 @@ func NewApiLogController() *ApiLogController {
 	return &ApiLogController{repo: repository.NewApiLogRepository()}
 }
 
-// Access GET /api/v1/infra/api-logs/access
+// Access 分页查询 API 访问日志，支持按请求地址与响应码筛选。
+// 入参：requestUrl、resultCode、pageNo、pageSize（查询串）；返回日志列表与总数。
 func (c *ApiLogController) Access(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -42,7 +43,8 @@ func (c *ApiLogController) Access(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Error GET /api/v1/infra/api-logs/error
+// Error 分页查询 API 错误日志，支持按请求地址与关键字（错误信息）筛选。
+// 入参：requestUrl、keyword、pageNo、pageSize（查询串）；返回日志列表与总数。
 func (c *ApiLogController) Error(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -63,7 +65,8 @@ func (c *ApiLogController) Error(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Process PUT /api/v1/infra/api-logs/error/{id}/process
+// Process 把错误日志标记为已处理，用于区分待排查与已解决。
+// 入参：路径 id；返回 null。
 func (c *ApiLogController) Process(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

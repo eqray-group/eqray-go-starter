@@ -59,6 +59,7 @@ type MemberService struct {
 	points  *repository.MemberPointRecordRepository
 }
 
+// NewMemberService 构造会员档案服务，装配会员、等级与积分流水仓储。
 func NewMemberService() *MemberService {
 	return &MemberService{
 		members: repository.NewMemberRepository(),

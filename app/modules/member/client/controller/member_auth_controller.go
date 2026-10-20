@@ -19,6 +19,7 @@ type MemberAuthController struct {
 	auth    *service.MemberAuthService
 }
 
+// NewMemberAuthController 构造 C 端会员认证控制器，并装配社交与手机号登录服务。
 func NewMemberAuthController() *MemberAuthController {
 	return &MemberAuthController{
 		service: service.NewMemberSocialService(),
@@ -26,7 +27,8 @@ func NewMemberAuthController() *MemberAuthController {
 	}
 }
 
-// SmsCode POST /api/v1/client/member/auth/sms-code
+// SmsCode 发送登录短信验证码，60 秒内同一手机号只能发一次。
+// 入参：mobile、scene（默认 login）；返回 null。
 func (c *MemberAuthController) SmsCode(ctx http.Context) http.Response {
 	var req request.MemberSmsCodeRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -40,7 +42,8 @@ func (c *MemberAuthController) SmsCode(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// SmsLogin POST /api/v1/client/member/auth/sms-login
+// SmsLogin 手机号验证码登录；手机号不存在时自动注册会员。
+// 入参：mobile、code；返回会员信息与访问 / 刷新令牌。
 func (c *MemberAuthController) SmsLogin(ctx http.Context) http.Response {
 	var req request.MemberSmsLoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -60,7 +63,8 @@ func (c *MemberAuthController) SmsLogin(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// SocialBindLogin POST /api/v1/client/member/auth/social-bind-login
+// SocialBindLogin 先手机号登录取令牌，再绑定第三方账号；绑定失败不签发令牌。
+// 入参：mobile、code、socialType、socialCode、socialState；返回会员信息与令牌。
 func (c *MemberAuthController) SocialBindLogin(ctx http.Context) http.Response {
 	var req request.MemberSocialBindLoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -83,8 +87,8 @@ func (c *MemberAuthController) SocialBindLogin(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// AuthorizeURL GET /api/v1/client/member/auth/social/{type}/authorize-url
-// 公众号 / 网站扫码返回跳转地址；小程序返回空串，由前端 wx.login 取 code。
+// AuthorizeURL 生成第三方授权的跳转地址，凭据取自后台 member_social_client 配置。
+// 入参：路径 type（渠道）+ redirectUri、state（查询串）；公众号 / 网站扫码返回跳转地址，小程序返回空串。
 func (c *MemberAuthController) AuthorizeURL(ctx http.Context) http.Response {
 	url, err := c.service.AuthorizeURL(
 		ctx.Context(),
@@ -99,7 +103,8 @@ func (c *MemberAuthController) AuthorizeURL(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"url": url})
 }
 
-// SocialLogin POST /api/v1/client/member/auth/social/login
+// SocialLogin 第三方快捷登录：已绑定才签发令牌，未绑定返回业务错误码，不自动注册。
+// 入参：type（渠道）、code（授权码）；返回会员信息与令牌。
 func (c *MemberAuthController) SocialLogin(ctx http.Context) http.Response {
 	var req request.MemberSocialLoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -119,7 +124,8 @@ func (c *MemberAuthController) SocialLogin(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// Refresh POST /api/v1/client/member/auth/refresh
+// Refresh 用刷新令牌换新的访问令牌，并重置刷新令牌有效期。
+// 入参：refreshToken；返回新的令牌对。
 func (c *MemberAuthController) Refresh(ctx http.Context) http.Response {
 	var req request.MemberRefreshRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -134,7 +140,8 @@ func (c *MemberAuthController) Refresh(ctx http.Context) http.Response {
 	return result.Success(ctx, tokens)
 }
 
-// Logout POST /api/v1/client/member/auth/logout
+// Logout 注销会员登录态：删除 Redis 中的访问令牌与刷新令牌。
+// 入参：Authorization 头 + refreshToken；返回 null。
 func (c *MemberAuthController) Logout(ctx http.Context) http.Response {
 	var req request.MemberLogoutRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -149,7 +156,8 @@ func (c *MemberAuthController) Logout(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Me GET /api/v1/client/member/auth/me
+// Me 查询当前登录会员的基本信息，供前端刷新登录态。
+// 无入参，会员身份取自令牌；返回会员档案，令牌失效返回未授权。
 func (c *MemberAuthController) Me(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {
@@ -164,7 +172,8 @@ func (c *MemberAuthController) Me(ctx http.Context) http.Response {
 	return result.Success(ctx, member)
 }
 
-// Bind POST /api/v1/client/member/auth/social/bind
+// Bind 把第三方账号绑定到当前会员，同一渠道只能绑定一个账号。
+// 入参：type、code；会员身份取自令牌；返回 null。
 func (c *MemberAuthController) Bind(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {
@@ -188,7 +197,8 @@ func (c *MemberAuthController) Bind(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Bindings GET /api/v1/client/member/auth/social/bindings
+// Bindings 查询当前会员已绑定的第三方账号列表。
+// 无入参，会员身份取自令牌；返回绑定记录列表。
 func (c *MemberAuthController) Bindings(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {
@@ -203,7 +213,8 @@ func (c *MemberAuthController) Bindings(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// Unbind DELETE /api/v1/client/member/auth/social/bindings/{id}
+// Unbind 解绑指定的第三方账号；至少保留一个绑定，避免会员失去登录方式。
+// 入参：路径 id（绑定记录 ID）；返回 null。
 func (c *MemberAuthController) Unbind(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {

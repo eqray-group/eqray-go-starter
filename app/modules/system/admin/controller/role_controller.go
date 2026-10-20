@@ -19,7 +19,8 @@ func NewRoleController() *RoleController {
 	return &RoleController{service: service.NewRoleService()}
 }
 
-// Index GET /api/v1/system/roles
+// Index 分页查询角色，支持按名称、编码与状态筛选。
+// 入参：name、code、status、pageNo、pageSize（查询串）；返回角色列表与总数。
 func (c *RoleController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -48,8 +49,8 @@ func (c *RoleController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Options GET /api/v1/system/roles/options
-// 用户分配角色时复用，返回全部启用角色。
+// Options 查询启用中的角色，供用户分配角色时下拉选择。
+// 无入参；返回角色列表。
 func (c *RoleController) Options(ctx http.Context) http.Response {
 	list, err := c.service.Options(ctx.Context())
 	if err != nil {
@@ -59,7 +60,8 @@ func (c *RoleController) Options(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// Show GET /api/v1/system/roles/{id}
+// Show 查询单个角色详情。
+// 入参：路径 id；返回角色详情，不存在返回业务错误码。
 func (c *RoleController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -74,7 +76,8 @@ func (c *RoleController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, role)
 }
 
-// Store POST /api/v1/system/roles
+// Store 新增角色；角色编码唯一，重复时返回业务错误码。
+// 入参：name、code、sort、status、remark；返回新角色 ID。
 func (c *RoleController) Store(ctx http.Context) http.Response {
 	var req request.RoleCreateRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -95,7 +98,8 @@ func (c *RoleController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/system/roles/{id}
+// Update 编辑角色名称、编码、排序、状态与备注，并刷新权限缓存版本。
+// 入参：路径 id + 角色字段；返回 null。
 func (c *RoleController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -121,7 +125,8 @@ func (c *RoleController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/system/roles/{id}
+// Destroy 删除角色（软删）；内置角色或仍被用户使用时不建议删除。
+// 入参：路径 id；返回 null。
 func (c *RoleController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -135,7 +140,8 @@ func (c *RoleController) Destroy(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Menus GET /api/v1/system/roles/{id}/menus
+// Menus 查询角色已授权的菜单 ID 列表，供权限树回显。
+// 入参：路径 id；返回菜单 ID 数组。
 func (c *RoleController) Menus(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -150,7 +156,8 @@ func (c *RoleController) Menus(ctx http.Context) http.Response {
 	return result.Success(ctx, menuIDs)
 }
 
-// AssignMenus PUT /api/v1/system/roles/{id}/menus
+// AssignMenus 覆盖式设置角色菜单权限，并前移 rbac 缓存版本让新权限立即生效。
+// 入参：路径 id + menuIds；返回 null。
 func (c *RoleController) AssignMenus(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

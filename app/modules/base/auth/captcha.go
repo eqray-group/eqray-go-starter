@@ -74,6 +74,7 @@ func VerifyCaptcha(id, answer string) bool {
 	return captchaStore.Verify(id, answer, true)
 }
 
+// captchaKey 生成验证码在 Redis 中的键：前缀 + captchaId。
 func captchaKey(id string) string {
 	return captchaKeyPrefix + id
 }

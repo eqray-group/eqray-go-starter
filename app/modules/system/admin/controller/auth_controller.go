@@ -27,7 +27,8 @@ func NewAuthController() *AuthController {
 	}
 }
 
-// Captcha GET /api/v1/system/auth/captcha
+// Captcha 生成登录图形验证码，验证码内容存 Redis，图片以 base64 返回。
+// 无入参；返回 { captchaId, image }。
 func (c *AuthController) Captcha(ctx http.Context) http.Response {
 	id, image, err := baseAuth.GenerateCaptcha()
 	if err != nil {
@@ -40,7 +41,8 @@ func (c *AuthController) Captcha(ctx http.Context) http.Response {
 	})
 }
 
-// Profile GET /api/v1/system/profile
+// Profile 查询当前登录者的个人资料、角色与权限点，供前端初始化用户态。
+// 无入参，用户身份取自令牌；返回个人资料，未登录返回未授权。
 func (c *AuthController) Profile(ctx http.Context) http.Response {
 	userID := support.UserID(ctx.Context())
 	if userID == 0 {
@@ -55,7 +57,8 @@ func (c *AuthController) Profile(ctx http.Context) http.Response {
 	return result.Success(ctx, data)
 }
 
-// UpdateProfile PUT /api/v1/system/profile
+// UpdateProfile 修改当前登录者的个人资料。
+// 入参：nickname、email、mobile、sex、avatar；返回 null。
 func (c *AuthController) UpdateProfile(ctx http.Context) http.Response {
 	userID := support.UserID(ctx.Context())
 	if userID == 0 {
@@ -81,7 +84,8 @@ func (c *AuthController) UpdateProfile(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// UpdatePassword PUT /api/v1/system/profile/password
+// UpdatePassword 修改当前登录者的登录密码，需要校验原密码。
+// 入参：oldPassword、newPassword；返回 null。
 func (c *AuthController) UpdatePassword(ctx http.Context) http.Response {
 	userID := support.UserID(ctx.Context())
 	if userID == 0 {
@@ -100,7 +104,8 @@ func (c *AuthController) UpdatePassword(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Login POST /api/v1/system/auth/login
+// Login 后台账号密码登录，校验图形验证码后签发访问 / 刷新令牌。
+// 入参：username、password、captchaId、captchaCode；返回用户信息、角色权限与令牌。
 func (c *AuthController) Login(ctx http.Context) http.Response {
 	var req request.LoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -122,7 +127,8 @@ func (c *AuthController) Login(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// Refresh POST /api/v1/system/auth/refresh
+// Refresh 用刷新令牌换新的访问令牌。
+// 入参：refreshToken；返回新的令牌对。
 func (c *AuthController) Refresh(ctx http.Context) http.Response {
 	var req request.RefreshRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -137,7 +143,8 @@ func (c *AuthController) Refresh(ctx http.Context) http.Response {
 	return result.Success(ctx, tokens)
 }
 
-// Logout POST /api/v1/system/auth/logout
+// Logout 注销后台登录态：清理令牌并写一条登录日志。
+// 入参：Authorization 头 + refreshToken；返回 null。
 func (c *AuthController) Logout(ctx http.Context) http.Response {
 	c.service.Logout(
 		ctx.Context(),

@@ -32,10 +32,12 @@ type MemberTagService struct {
 	tags *repository.MemberTagRepository
 }
 
+// NewMemberTagService 构造会员标签服务。
 func NewMemberTagService() *MemberTagService {
 	return &MemberTagService{tags: repository.NewMemberTagRepository()}
 }
 
+// Page 分页查询标签，关键字做 trim 后按名称模糊匹配。
 func (s *MemberTagService) Page(ctx context.Context, q MemberTagListQuery) ([]model.MemberTagModel, int64, error) {
 	return s.tags.Paginate(ctx, repository.MemberTagFilter{
 		Keyword: strings.TrimSpace(q.Keyword),
@@ -48,6 +50,7 @@ func (s *MemberTagService) Options(ctx context.Context) ([]model.MemberTagModel,
 	return s.tags.Enabled(ctx)
 }
 
+// Detail 查询标签详情，不存在时返回业务错误码。
 func (s *MemberTagService) Detail(ctx context.Context, id types.ID) (*model.MemberTagModel, error) {
 	m, err := s.tags.FindByID(ctx, id)
 	if err != nil {
@@ -60,6 +63,7 @@ func (s *MemberTagService) Detail(ctx context.Context, id types.ID) (*model.Memb
 	return m, nil
 }
 
+// Create 新增标签，返回新记录 ID。
 func (s *MemberTagService) Create(ctx context.Context, in MemberTagSaveInput) (types.ID, error) {
 	if err := normalizeTagInput(&in); err != nil {
 		return 0, err
@@ -77,6 +81,7 @@ func (s *MemberTagService) Create(ctx context.Context, in MemberTagSaveInput) (t
 	return m.ID, nil
 }
 
+// Update 编辑标签名称、状态与备注。
 func (s *MemberTagService) Update(ctx context.Context, id types.ID, in MemberTagSaveInput) error {
 	if err := normalizeTagInput(&in); err != nil {
 		return err
@@ -94,6 +99,7 @@ func (s *MemberTagService) Update(ctx context.Context, id types.ID, in MemberTag
 	return s.tags.Update(ctx, m)
 }
 
+// Delete 删除标签（软删）。
 func (s *MemberTagService) Delete(ctx context.Context, id types.ID) error {
 	m, err := s.Detail(ctx, id)
 	if err != nil {
@@ -103,6 +109,7 @@ func (s *MemberTagService) Delete(ctx context.Context, id types.ID) error {
 	return s.tags.Delete(ctx, m)
 }
 
+// normalizeTagInput 清洗入参并校验名称、状态等字段。
 func normalizeTagInput(in *MemberTagSaveInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Remark = strings.TrimSpace(in.Remark)

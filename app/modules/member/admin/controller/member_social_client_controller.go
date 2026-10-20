@@ -15,11 +15,13 @@ type MemberSocialClientController struct {
 	service *service.MemberSocialClientService
 }
 
+// NewMemberSocialClientController 构造第三方登录渠道配置控制器。
 func NewMemberSocialClientController() *MemberSocialClientController {
 	return &MemberSocialClientController{service: service.NewMemberSocialClientService()}
 }
 
-// Index GET /api/v1/member/social-clients
+// Index 分页查询第三方登录渠道配置，列表不返回 client_secret。
+// 入参：keyword、status、pageNo、pageSize（查询串）；返回配置列表与总数。
 func (c *MemberSocialClientController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -47,7 +49,8 @@ func (c *MemberSocialClientController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Show GET /api/v1/member/social-clients/{id}
+// Show 查询单个渠道配置详情，client_secret 不返回。
+// 入参：路径 id；返回配置详情。
 func (c *MemberSocialClientController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -62,7 +65,8 @@ func (c *MemberSocialClientController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// Store POST /api/v1/member/social-clients
+// Store 新增第三方登录渠道配置；同一 socialType 只能有一条。
+// 入参：name、socialType、clientId、clientSecret、agentId、status；返回新配置 ID。
 func (c *MemberSocialClientController) Store(ctx http.Context) http.Response {
 	var req request.MemberSocialClientSaveRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -84,7 +88,8 @@ func (c *MemberSocialClientController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/member/social-clients/{id}
+// Update 编辑渠道配置；clientSecret 留空表示不修改。
+// 入参：路径 id + 配置字段；返回 null。
 func (c *MemberSocialClientController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -111,7 +116,8 @@ func (c *MemberSocialClientController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/member/social-clients/{id}
+// Destroy 删除第三方登录渠道配置，删除后该渠道无法再登录。
+// 入参：路径 id；返回 null。
 func (c *MemberSocialClientController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

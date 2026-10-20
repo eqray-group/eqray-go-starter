@@ -40,6 +40,7 @@ func (t DateTime) Time() time.Time { return time.Time(t) }
 // IsZero 判断是否为零值（未赋值）。
 func (t DateTime) IsZero() bool { return time.Time(t).IsZero() }
 
+// String 按 DateTimeLayout 输出字符串，零值返回空串。
 func (t DateTime) String() string {
 	if t.IsZero() {
 		return ""
@@ -47,6 +48,7 @@ func (t DateTime) String() string {
 	return t.Time().In(location).Format(DateTimeLayout)
 }
 
+// MarshalJSON 输出 "2006-01-02 15:04:05" 格式，零值输出空串而非 null。
 func (t DateTime) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
 		return []byte(`""`), nil
@@ -64,6 +66,7 @@ func (t *DateTime) UnmarshalJSON(data []byte) error {
 	return t.parse(s)
 }
 
+// Value 实现 driver.Valuer：零值写 NULL，其余按配置时区转换后入库。
 func (t DateTime) Value() (driver.Value, error) {
 	if t.IsZero() {
 		return nil, nil
@@ -71,6 +74,7 @@ func (t DateTime) Value() (driver.Value, error) {
 	return t.Time().In(location), nil
 }
 
+// Scan 实现 sql.Scanner：兼容 nil、time.Time、string、[]byte 四种来源。
 func (t *DateTime) Scan(src any) error {
 	switch v := src.(type) {
 	case nil:
@@ -87,6 +91,7 @@ func (t *DateTime) Scan(src any) error {
 	return nil
 }
 
+// parse 依次按项目布局与 RFC3339 解析，都失败时返回错误。
 func (t *DateTime) parse(s string) error {
 	for _, layout := range []string{DateTimeLayout, time.RFC3339} {
 		if parsed, err := time.ParseInLocation(layout, s, location); err == nil {

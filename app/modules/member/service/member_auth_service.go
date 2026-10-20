@@ -62,6 +62,7 @@ type MemberAuthService struct {
 	sms     *infraService.InfraSmsService
 }
 
+// NewMemberAuthService 构造会员手机号登录服务，复用 infra 的短信发送能力。
 func NewMemberAuthService() *MemberAuthService {
 	return &MemberAuthService{
 		members: repository.NewMemberRepository(),
@@ -254,14 +255,17 @@ func (s *MemberAuthService) recordLogin(ctx context.Context, memberID types.ID, 
 	})
 }
 
+// smsCodeKey 返回验证码缓存键：按场景 + 手机号隔离。
 func smsCodeKey(scene, mobile string) string {
 	return smsCodeKeyPrefix + scene + ":" + mobile
 }
 
+// smsRateKey 返回发送频率限制键：同一手机号同一场景 60 秒内只能发一次。
 func smsRateKey(scene, mobile string) string {
 	return smsRateKeyPrefix + scene + ":" + mobile
 }
 
+// smsDailyKey 返回每日发送计数键：带日期后缀，跨天自动失效。
 func smsDailyKey(scene, mobile string) string {
 	return smsDailyKeyPrefix + scene + ":" + mobile + ":" + time.Now().Format("20060102")
 }

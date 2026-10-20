@@ -26,6 +26,7 @@ func NewMemberTagRepository() *MemberTagRepository {
 	return &MemberTagRepository{}
 }
 
+// Create 新增会员标签。
 func (r *MemberTagRepository) Create(ctx context.Context, m *model.MemberTagModel) error {
 	m.FillCreate(ctx)
 
@@ -43,6 +44,7 @@ func (r *MemberTagRepository) Create(ctx context.Context, m *model.MemberTagMode
 	return err
 }
 
+// Update 更新标签名称、状态与备注。
 func (r *MemberTagRepository) Update(ctx context.Context, m *model.MemberTagModel) error {
 	m.FillUpdate(ctx)
 
@@ -60,6 +62,7 @@ func (r *MemberTagRepository) Update(ctx context.Context, m *model.MemberTagMode
 	return err
 }
 
+// Delete 软删除标签；记录不存在时返回业务错误码。
 func (r *MemberTagRepository) Delete(ctx context.Context, m *model.MemberTagModel) error {
 	m.FillUpdate(ctx)
 
@@ -81,6 +84,7 @@ func (r *MemberTagRepository) Delete(ctx context.Context, m *model.MemberTagMode
 	return nil
 }
 
+// FindByID 按主键查询标签，不存在返回 nil。
 func (r *MemberTagRepository) FindByID(ctx context.Context, id types.ID) (*model.MemberTagModel, error) {
 	var m model.MemberTagModel
 
@@ -120,6 +124,7 @@ func (r *MemberTagRepository) FindByIDs(ctx context.Context, ids []types.ID) ([]
 	return list, nil
 }
 
+// Enabled 返回启用中的标签，供会员表单多选使用。
 func (r *MemberTagRepository) Enabled(ctx context.Context) ([]model.MemberTagModel, error) {
 	list := make([]model.MemberTagModel, 0)
 
@@ -134,6 +139,7 @@ func (r *MemberTagRepository) Enabled(ctx context.Context) ([]model.MemberTagMod
 	return list, nil
 }
 
+// Paginate 分页查询标签，支持名称模糊匹配与状态筛选。
 func (r *MemberTagRepository) Paginate(ctx context.Context, filter MemberTagFilter, pageNo, pageSize int) ([]model.MemberTagModel, int64, error) {
 	list := make([]model.MemberTagModel, 0)
 	var total int64

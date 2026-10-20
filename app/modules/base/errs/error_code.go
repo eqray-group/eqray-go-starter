@@ -15,6 +15,7 @@ type BusinessError struct {
 	msg  string
 }
 
+// Error 实现 error 接口，输出 "[错误码] 提示文案"，便于日志定位问题。
 func (e *BusinessError) Error() string {
 	return fmt.Sprintf("[%d] %s", e.code.Code, e.msg)
 }

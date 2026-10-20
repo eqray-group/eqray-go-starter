@@ -20,7 +20,8 @@ func NewInfraSmsChannelController() *InfraSmsChannelController {
 	return &InfraSmsChannelController{service: service.NewInfraSmsChannelService()}
 }
 
-// Index GET /api/v1/infra/sms-channels
+// Index 分页查询短信渠道，支持关键字、渠道编码与状态筛选，列表不返回 apiSecret。
+// 入参：keyword、code、status、pageNo、pageSize（查询串）；返回渠道列表与总数。
 func (c *InfraSmsChannelController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -49,7 +50,8 @@ func (c *InfraSmsChannelController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Options GET /api/v1/infra/sms-channels/options
+// Options 查询启用中的短信渠道，供短信模板绑定渠道时下拉选择。
+// 无入参；返回渠道列表。
 func (c *InfraSmsChannelController) Options(ctx http.Context) http.Response {
 	list, err := c.service.Options(ctx.Context())
 	if err != nil {
@@ -59,7 +61,8 @@ func (c *InfraSmsChannelController) Options(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// Show GET /api/v1/infra/sms-channels/{id}
+// Show 查询单个短信渠道详情，apiSecret 不返回。
+// 入参：路径 id；返回渠道详情，不存在返回业务错误码。
 func (c *InfraSmsChannelController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -74,7 +77,8 @@ func (c *InfraSmsChannelController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// Store POST /api/v1/infra/sms-channels
+// Store 新增短信渠道；code 唯一，取值 DebugLog / AliyunSms / TencentSms。
+// 入参：name、code、apiKey、apiSecret、signature、extra（JSON）、status、remark；返回新渠道 ID。
 func (c *InfraSmsChannelController) Store(ctx http.Context) http.Response {
 	var req request.InfraSmsChannelSaveRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -98,7 +102,8 @@ func (c *InfraSmsChannelController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/infra/sms-channels/{id}
+// Update 编辑短信渠道；apiSecret 留空表示不修改。
+// 入参：路径 id + 渠道字段；返回 null。
 func (c *InfraSmsChannelController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -127,7 +132,8 @@ func (c *InfraSmsChannelController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/infra/sms-channels/{id}
+// Destroy 删除短信渠道；渠道下仍有模板时由服务层拒绝删除。
+// 入参：路径 id；返回 null。
 func (c *InfraSmsChannelController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -150,7 +156,8 @@ func NewInfraSmsTemplateController() *InfraSmsTemplateController {
 	return &InfraSmsTemplateController{service: service.NewInfraSmsTemplateService()}
 }
 
-// Index GET /api/v1/infra/sms-templates
+// Index 分页查询短信模板，支持关键字、绑定渠道、模板类型与状态筛选。
+// 入参：keyword、channelId、type、status、pageNo、pageSize（查询串）；返回模板列表与总数。
 func (c *InfraSmsTemplateController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -183,7 +190,8 @@ func (c *InfraSmsTemplateController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Show GET /api/v1/infra/sms-templates/{id}
+// Show 查询单个短信模板详情。
+// 入参：路径 id；返回模板详情，不存在返回业务错误码。
 func (c *InfraSmsTemplateController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -198,7 +206,8 @@ func (c *InfraSmsTemplateController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// Store POST /api/v1/infra/sms-templates
+// Store 新增短信模板并绑定发送渠道；模板编码唯一。
+// 入参：channelId、code、name、type、apiTemplateId、content、params、status、remark；返回新模板 ID。
 func (c *InfraSmsTemplateController) Store(ctx http.Context) http.Response {
 	var req request.InfraSmsTemplateSaveRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -223,7 +232,8 @@ func (c *InfraSmsTemplateController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/infra/sms-templates/{id}
+// Update 编辑短信模板内容、变量与绑定渠道。
+// 入参：路径 id + 模板字段；返回 null。
 func (c *InfraSmsTemplateController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -253,7 +263,8 @@ func (c *InfraSmsTemplateController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/infra/sms-templates/{id}
+// Destroy 删除短信模板（软删）；删除后对应场景的验证码将无法发送。
+// 入参：路径 id；返回 null。
 func (c *InfraSmsTemplateController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

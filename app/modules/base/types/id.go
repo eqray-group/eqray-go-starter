@@ -13,10 +13,13 @@ import (
 // 见 docs 8.4「ID 字段的序列化」。
 type ID int64
 
+// String 把雪花 ID 转成十进制字符串，供 JSON、日志与 Redis 键使用。
 func (i ID) String() string { return strconv.FormatInt(int64(i), 10) }
 
+// MarshalJSON 把 ID 序列化成字符串，避免前端 JS 处理 19 位整数时丢精度。
 func (i ID) MarshalJSON() ([]byte, error) { return json.Marshal(i.String()) }
 
+// UnmarshalJSON 解析请求里的 ID：兼容字符串与数字，空串、null 视为 0。
 func (i *ID) UnmarshalJSON(data []byte) error {
 	s := strings.Trim(string(data), `"`)
 	if s == "" || s == "null" {
@@ -34,6 +37,7 @@ func (i *ID) UnmarshalJSON(data []byte) error {
 // Value 让 GORM 把 ID 当作 int64 写入数据库。
 func (i ID) Value() (driver.Value, error) { return int64(i), nil }
 
+// Scan 实现 sql.Scanner：兼容 nil、int64、[]byte、string 四种来源。
 func (i *ID) Scan(src any) error {
 	switch v := src.(type) {
 	case nil:

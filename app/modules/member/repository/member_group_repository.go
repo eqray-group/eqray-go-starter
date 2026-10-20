@@ -26,6 +26,7 @@ func NewMemberGroupRepository() *MemberGroupRepository {
 	return &MemberGroupRepository{}
 }
 
+// Create 新增会员分组。
 func (r *MemberGroupRepository) Create(ctx context.Context, m *model.MemberGroupModel) error {
 	m.FillCreate(ctx)
 
@@ -43,6 +44,7 @@ func (r *MemberGroupRepository) Create(ctx context.Context, m *model.MemberGroup
 	return err
 }
 
+// Update 更新分组名称、状态与备注。
 func (r *MemberGroupRepository) Update(ctx context.Context, m *model.MemberGroupModel) error {
 	m.FillUpdate(ctx)
 
@@ -60,6 +62,7 @@ func (r *MemberGroupRepository) Update(ctx context.Context, m *model.MemberGroup
 	return err
 }
 
+// Delete 软删除分组；记录不存在时返回业务错误码。
 func (r *MemberGroupRepository) Delete(ctx context.Context, m *model.MemberGroupModel) error {
 	m.FillUpdate(ctx)
 
@@ -81,6 +84,7 @@ func (r *MemberGroupRepository) Delete(ctx context.Context, m *model.MemberGroup
 	return nil
 }
 
+// FindByID 按主键查询分组，不存在返回 nil。
 func (r *MemberGroupRepository) FindByID(ctx context.Context, id types.ID) (*model.MemberGroupModel, error) {
 	var m model.MemberGroupModel
 
@@ -97,6 +101,7 @@ func (r *MemberGroupRepository) FindByID(ctx context.Context, id types.ID) (*mod
 	return &m, nil
 }
 
+// Enabled 返回启用中的分组，供会员表单下拉使用。
 func (r *MemberGroupRepository) Enabled(ctx context.Context) ([]model.MemberGroupModel, error) {
 	list := make([]model.MemberGroupModel, 0)
 
@@ -111,6 +116,7 @@ func (r *MemberGroupRepository) Enabled(ctx context.Context) ([]model.MemberGrou
 	return list, nil
 }
 
+// Paginate 分页查询分组，支持名称模糊匹配与状态筛选。
 func (r *MemberGroupRepository) Paginate(ctx context.Context, filter MemberGroupFilter, pageNo, pageSize int) ([]model.MemberGroupModel, int64, error) {
 	list := make([]model.MemberGroupModel, 0)
 	var total int64

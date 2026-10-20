@@ -57,6 +57,7 @@ type MemberProfileService struct {
 	groups  *repository.MemberGroupRepository
 }
 
+// NewMemberProfileService 构造会员资料服务，装配会员、等级、标签与分组仓储。
 func NewMemberProfileService() *MemberProfileService {
 	return &MemberProfileService{
 		members: repository.NewMemberRepository(),

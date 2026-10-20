@@ -33,6 +33,7 @@ type MemberAddressService struct {
 	addresses *repository.MemberAddressRepository
 }
 
+// NewMemberAddressService 构造会员地址服务。
 func NewMemberAddressService() *MemberAddressService {
 	return &MemberAddressService{addresses: repository.NewMemberAddressRepository()}
 }

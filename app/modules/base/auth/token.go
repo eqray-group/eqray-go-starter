@@ -191,6 +191,7 @@ func randomToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+// unauthorized 构造未授权业务异常，供鉴权失败时统一返回 401 对应错误码。
 func unauthorized() error {
 	return baseErrs.New(baseErrs.Unauthorized)
 }

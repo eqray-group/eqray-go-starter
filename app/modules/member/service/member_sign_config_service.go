@@ -35,6 +35,7 @@ type MemberSignConfigService struct {
 	configs *repository.MemberSignConfigRepository
 }
 
+// NewMemberSignConfigService 构造签到奖励档位服务。
 func NewMemberSignConfigService() *MemberSignConfigService {
 	return &MemberSignConfigService{configs: repository.NewMemberSignConfigRepository()}
 }

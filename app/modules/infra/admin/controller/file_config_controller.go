@@ -18,8 +18,8 @@ func NewFileConfigController() *FileConfigController {
 	return &FileConfigController{service: service.NewFileConfigService()}
 }
 
-// Index GET /api/v1/infra/file-configs
-// 文件配置是低频数据，直接返回全量列表。
+// Index 查询全部存储配置（低频数据不分页），列表会隐藏密钥字段。
+// 无入参；返回 { list }。
 func (c *FileConfigController) Index(ctx http.Context) http.Response {
 	list, err := c.service.List(ctx.Context())
 	if err != nil {
@@ -29,7 +29,8 @@ func (c *FileConfigController) Index(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"list": list})
 }
 
-// Store POST /api/v1/infra/file-configs
+// Store 新增存储配置，storage 支持 local / s3，config 为对应驱动的 JSON 参数。
+// 入参：name、storage、master、config；返回 null。
 func (c *FileConfigController) Store(ctx http.Context) http.Response {
 	var req request.FileConfigRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -49,7 +50,8 @@ func (c *FileConfigController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Update PUT /api/v1/infra/file-configs/{id}
+// Update 编辑存储配置。
+// 入参：路径 id + name、storage、master、config；返回 null。
 func (c *FileConfigController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -74,8 +76,8 @@ func (c *FileConfigController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// SetMaster PUT /api/v1/infra/file-configs/{id}/master
-// 把指定配置设为主配置，新上传文件将落到该配置的目录。
+// SetMaster 把指定配置设为主配置，事务内保证主配置唯一，之后上传的文件都走该配置。
+// 入参：路径 id；返回 null。
 func (c *FileConfigController) SetMaster(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -89,7 +91,8 @@ func (c *FileConfigController) SetMaster(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/infra/file-configs/{id}
+// Destroy 删除存储配置；主配置或被文件引用的配置由服务层拒绝删除。
+// 入参：路径 id；返回 null。
 func (c *FileConfigController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

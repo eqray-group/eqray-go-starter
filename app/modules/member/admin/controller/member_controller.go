@@ -19,6 +19,7 @@ type MemberController struct {
 	socials *service.MemberSocialService
 }
 
+// NewMemberController 构造会员档案控制器，并装配会员与社交服务。
 func NewMemberController() *MemberController {
 	return &MemberController{
 		service: service.NewMemberService(),
@@ -26,7 +27,8 @@ func NewMemberController() *MemberController {
 	}
 }
 
-// Index GET /api/v1/member/users
+// Index 分页查询会员档案，支持昵称、手机号、等级、分组与状态筛选。
+// 入参：nickname、mobile、levelId、groupId、status、pageNo、pageSize（查询串）；返回会员列表与总数。
 func (c *MemberController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -57,7 +59,8 @@ func (c *MemberController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Show GET /api/v1/member/users/{id}
+// Show 查询会员详情，含等级、标签、分组等展示字段。
+// 入参：路径 id；返回会员详情，不存在返回业务错误码。
 func (c *MemberController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -72,7 +75,8 @@ func (c *MemberController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// Store POST /api/v1/member/users
+// Store 后台新增会员档案；手机号唯一，重复时返回业务错误码。
+// 入参见 MemberSaveRequest（昵称、手机号、等级、积分、标签、分组等）；返回新会员 ID。
 func (c *MemberController) Store(ctx http.Context) http.Response {
 	var req request.MemberSaveRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -87,7 +91,8 @@ func (c *MemberController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/member/users/{id}
+// Update 编辑会员档案；积分与等级建议走专用的调整接口。
+// 入参：路径 id + 会员字段；返回 null。
 func (c *MemberController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -106,7 +111,8 @@ func (c *MemberController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// UpdateStatus PUT /api/v1/member/users/{id}/status
+// UpdateStatus 启用或禁用会员，禁用后 C 端接口会拒绝该会员。
+// 入参：路径 id + status（0 禁用 / 1 启用）；返回 null。
 func (c *MemberController) UpdateStatus(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -125,7 +131,8 @@ func (c *MemberController) UpdateStatus(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// AdjustPoint POST /api/v1/member/users/{id}/point
+// AdjustPoint 后台调整会员积分，正数增加、负数扣减，并写一条积分流水。
+// 入参：路径 id + point、title、description；返回 null。
 func (c *MemberController) AdjustPoint(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -144,7 +151,8 @@ func (c *MemberController) AdjustPoint(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// AdjustLevel PUT /api/v1/member/users/{id}/level
+// AdjustLevel 后台调整会员等级与经验，并写一条等级变更记录。
+// 入参：路径 id + levelId、experience、title、description；返回 null。
 func (c *MemberController) AdjustLevel(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -163,7 +171,8 @@ func (c *MemberController) AdjustLevel(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// PointRecords GET /api/v1/member/users/{id}/points
+// PointRecords 分页查询指定会员的积分流水。
+// 入参：路径 id + pageNo、pageSize；返回流水列表与总数。
 func (c *MemberController) PointRecords(ctx http.Context) http.Response {
 	id, page, err := c.pathIDAndPage(ctx)
 	if err != nil {
@@ -178,7 +187,8 @@ func (c *MemberController) PointRecords(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// LevelRecords GET /api/v1/member/users/{id}/level-records
+// LevelRecords 分页查询指定会员的等级变更记录。
+// 入参：路径 id + pageNo、pageSize；返回等级记录列表与总数。
 func (c *MemberController) LevelRecords(ctx http.Context) http.Response {
 	id, page, err := c.pathIDAndPage(ctx)
 	if err != nil {
@@ -193,7 +203,8 @@ func (c *MemberController) LevelRecords(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// SignRecords GET /api/v1/member/users/{id}/sign-records
+// SignRecords 分页查询指定会员的签到记录。
+// 入参：路径 id + pageNo、pageSize；返回签到记录列表与总数。
 func (c *MemberController) SignRecords(ctx http.Context) http.Response {
 	id, page, err := c.pathIDAndPage(ctx)
 	if err != nil {
@@ -208,7 +219,8 @@ func (c *MemberController) SignRecords(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Addresses GET /api/v1/member/users/{id}/addresses
+// Addresses 查询指定会员的收货地址列表（只读），默认地址排最前。
+// 入参：路径 id；返回地址列表。
 func (c *MemberController) Addresses(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -223,8 +235,8 @@ func (c *MemberController) Addresses(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// SocialBindings GET /api/v1/member/users/{id}/social-bindings
-// 管理端只读查看会员绑定的第三方账号。
+// SocialBindings 管理端只读查看会员绑定的第三方账号，不支持在此解绑。
+// 入参：路径 id；返回绑定记录列表。
 func (c *MemberController) SocialBindings(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -239,7 +251,8 @@ func (c *MemberController) SocialBindings(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// Destroy DELETE /api/v1/member/users/{id}
+// Destroy 删除会员档案（软删），已产生的积分 / 等级 / 签到记录保留。
+// 入参：路径 id；返回 null。
 func (c *MemberController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

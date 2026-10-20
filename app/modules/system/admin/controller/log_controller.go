@@ -22,7 +22,8 @@ func NewLogController() *LogController {
 	}
 }
 
-// Login GET /api/v1/system/logs/login
+// Login 分页查询登录日志，支持账号、登录类型与登录结果筛选。
+// 入参：username、type、result、pageNo、pageSize（查询串）；返回日志列表与总数。
 func (c *LogController) Login(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -54,7 +55,8 @@ func (c *LogController) Login(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Operate GET /api/v1/system/logs/operate
+// Operate 分页查询操作日志，支持模块、子类型、关键字与成功标记筛选。
+// 入参：type、subType、keyword、success、pageNo、pageSize（查询串）；返回日志列表与总数。
 func (c *LogController) Operate(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),

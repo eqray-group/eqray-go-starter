@@ -1161,6 +1161,35 @@ return errs.New(errs.SystemUsernameExists, username)
 - 一个错误码只表达一件事；「参数不合法」这类粗粒度判断归系统错误码 `400`，不另造业务码。
 - 错误码的 `code` 与常量名一一对应且**不可回收**：删除某个错误码后其数值不再复用，因为前端与历史日志可能长期留存该值。
 
+### 11.3 注释规范
+
+Go 侧按标准 doc comment 形式书写（`// Name ...`），但**内容必须是业务语义，不能是路由复述**：
+
+```go
+// 反例：等于把函数名与路由抄一遍，零信息量
+// Index GET /api/v1/system/users
+
+// 正例：做什么 + 关键约束 + 入参 + 返回
+// Index 分页查询后台用户，支持账号、昵称、手机号与状态筛选。
+// 入参：username、nickname、mobile、status、pageNo、pageSize（查询串）；返回用户列表与总数。
+func (c *UserController) Index(ctx http.Context) http.Response {
+```
+
+分层要求：
+
+| 层           | 注释要点                                                    |
+| ------------ | ----------------------------------------------------------- |
+| Controller   | 业务动作与可选筛选；`入参：` 来源（查询串 / 请求体 / 路径）；`返回：` 结构 |
+| Service      | 业务规则与边界：唯一键、事务范围、软删、缓存版本前移        |
+| Repository   | 查询条件、排序方式、「不存在返回 nil」这类约定              |
+| Request      | `Rules` 校验了什么、`Messages` 覆盖哪些提示                 |
+| 私有函数     | 一句话说明用途（键构造、入参清洗、类型转换）                |
+| 构造函数     | 装配了哪些依赖                                              |
+| 迁移         | `Up` 的建表 / 补列 / 种子内容与幂等前提；`Down` 的回滚动作  |
+
+前端沿用同一原则：函数上方用 `// 中文说明`，写触发时机与副作用，例如
+「搜索：合并搜索栏条件后重新查询」「弹窗提交成功：按操作类型刷新列表」。
+
 ---
 
 ## 12. 现有代码的迁移
@@ -1295,6 +1324,7 @@ const xxxTable = model.SystemXxxModelTable
 // XxxRepository 是 system_xxx 表的仓储。
 type XxxRepository struct{}
 
+// NewXxxRepository 构造仓储实例；仓储无状态，不需要注入依赖。
 func NewXxxRepository() *XxxRepository {
 	return &XxxRepository{}
 }
@@ -1545,11 +1575,13 @@ type XxxController struct {
 	service *service.XxxService
 }
 
+// NewXxxController 构造 xxx 控制器。
 func NewXxxController() *XxxController {
 	return &XxxController{service: service.NewXxxService()}
 }
 
-// Index GET /api/v1/system/xxxs
+// Index 分页查询 xxx，支持按关键字筛选。
+// 入参：keyword、pageNo、pageSize（查询串）；返回列表与总数。
 func (c *XxxController) Index(ctx http.Context) http.Response {
 	var page param.Page
 	page.PageNo = ctx.Request().QueryInt("pageNo", 1)
@@ -1566,7 +1598,8 @@ func (c *XxxController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Store POST /api/v1/system/xxxs
+// Store 新增 xxx；名称非空且唯一。
+// 入参：name、status、remark；返回新记录。
 func (c *XxxController) Store(ctx http.Context) http.Response {
 	var req request.XxxCreateRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -1581,7 +1614,8 @@ func (c *XxxController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// Show GET /api/v1/system/xxxs/{id}
+// Show 查询单条 xxx 详情。
+// 入参：路径 id；返回记录详情，不存在返回业务错误码。
 func (c *XxxController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -1668,6 +1702,7 @@ func (r *M20261017000002CreateSystemXxxTable) Signature() string {
 	return "20261017000002_create_system_xxx_table"
 }
 
+// Up 建 system_xxx 表；表已存在直接返回，保证重复执行幂等。
 func (r *M20261017000002CreateSystemXxxTable) Up() error {
 	if facades.Schema().HasTable("system_xxx") {
 		return nil
@@ -1691,6 +1726,7 @@ func (r *M20261017000002CreateSystemXxxTable) Up() error {
 	})
 }
 
+// Down 回滚时删表，用 DropIfExists 避免表不存在时报错。
 func (r *M20261017000002CreateSystemXxxTable) Down() error {
 	return facades.Schema().DropIfExists("system_xxx")
 }
@@ -1699,6 +1735,7 @@ func (r *M20261017000002CreateSystemXxxTable) Down() error {
 唯一键直接建在业务键上。需要写原生 SQL（如生成列、复杂默认值）时用下面的模板，注意不要引入 `deleted_key`：
 
 ```go
+// Up 用原生 SQL 建表，便于写唯一键与复杂默认值；表已存在直接返回。
 func (r *M20261017000002CreateSystemXxxTable) Up() error {
 	if facades.Schema().HasTable("system_xxx") {
 		return nil
@@ -1720,6 +1757,7 @@ CREATE TABLE system_xxx (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='xxx 表'`)
 }
 
+// Down 回滚时删表，与 Up 的建表动作对应。
 func (r *M20261017000002CreateSystemXxxTable) Down() error {
 	return facades.Schema().DropIfExists("system_xxx")
 }

@@ -19,7 +19,8 @@ func NewUserController() *UserController {
 	return &UserController{service: service.NewUserService()}
 }
 
-// Index GET /api/v1/system/users
+// Index 分页查询后台用户，支持账号、昵称、手机号与状态筛选。
+// 入参：username、nickname、mobile、status、pageNo、pageSize（查询串）；返回用户列表与总数。
 func (c *UserController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -49,7 +50,8 @@ func (c *UserController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Show GET /api/v1/system/users/{id}
+// Show 查询单个后台用户的详情。
+// 入参：路径 id；返回用户详情，不存在返回业务错误码。
 func (c *UserController) Show(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -64,7 +66,8 @@ func (c *UserController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, user)
 }
 
-// Store POST /api/v1/system/users
+// Store 新增后台用户；账号唯一，密码由服务层加密后入库。
+// 入参见 UserCreateRequest（账号、密码、昵称、邮箱、手机号等）；返回新用户 ID。
 func (c *UserController) Store(ctx http.Context) http.Response {
 	var req request.UserCreateRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -89,7 +92,8 @@ func (c *UserController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/system/users/{id}
+// Update 编辑后台用户资料，密码不在本接口修改。
+// 入参：路径 id + 用户字段；返回 null。
 func (c *UserController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -118,7 +122,8 @@ func (c *UserController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/system/users/{id}
+// Destroy 删除后台用户（软删），并清理其角色关联。
+// 入参：路径 id；返回 null。
 func (c *UserController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -132,7 +137,8 @@ func (c *UserController) Destroy(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// ResetPassword PUT /api/v1/system/users/{id}/password
+// ResetPassword 管理员重置指定用户的登录密码。
+// 入参：路径 id + password（明文，服务层加密）；返回 null。
 func (c *UserController) ResetPassword(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -151,7 +157,8 @@ func (c *UserController) ResetPassword(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Roles GET /api/v1/system/users/{id}/roles
+// Roles 查询指定用户已分配的角色 ID 列表，供角色分配弹窗回显。
+// 入参：路径 id；返回角色 ID 数组。
 func (c *UserController) Roles(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -166,7 +173,8 @@ func (c *UserController) Roles(ctx http.Context) http.Response {
 	return result.Success(ctx, roleIDs)
 }
 
-// AssignRoles PUT /api/v1/system/users/{id}/roles
+// AssignRoles 覆盖式设置用户角色，传入的 ID 列表会替换原有角色，并刷新权限缓存版本。
+// 入参：路径 id + roleIds；返回 null。
 func (c *UserController) AssignRoles(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

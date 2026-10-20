@@ -16,11 +16,13 @@ type MemberProfileController struct {
 	service *service.MemberProfileService
 }
 
+// NewMemberProfileController 构造 C 端会员资料控制器。
 func NewMemberProfileController() *MemberProfileController {
 	return &MemberProfileController{service: service.NewMemberProfileService()}
 }
 
-// Show GET /api/v1/client/member/profile
+// Show 查看「我的资料」：基础档案 + 等级名、下一等级所需经验、标签名与分组名。
+// 无入参，会员身份取自令牌；返回资料详情。
 func (c *MemberProfileController) Show(ctx http.Context) http.Response {
 	profile, err := c.service.Profile(ctx.Context(), support.MemberID(ctx.Context()))
 	if err != nil {
@@ -30,7 +32,8 @@ func (c *MemberProfileController) Show(ctx http.Context) http.Response {
 	return result.Success(ctx, profile)
 }
 
-// Update PUT /api/v1/client/member/profile
+// Update 修改「我的资料」：昵称、头像、姓名、性别、生日、地区。
+// 入参见 MemberProfileUpdateRequest，生日格式 2006-01-02；手机号、积分、等级不可自助修改；返回 null。
 func (c *MemberProfileController) Update(ctx http.Context) http.Response {
 	var req request.MemberProfileUpdateRequest
 	if err := param.Bind(ctx, &req); err != nil {

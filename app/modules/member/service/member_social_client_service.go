@@ -35,6 +35,7 @@ type MemberSocialClientService struct {
 	clients *repository.MemberSocialClientRepository
 }
 
+// NewMemberSocialClientService 构造第三方登录渠道配置服务。
 func NewMemberSocialClientService() *MemberSocialClientService {
 	return &MemberSocialClientService{clients: repository.NewMemberSocialClientRepository()}
 }

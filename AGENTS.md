@@ -374,6 +374,31 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - C 端只读接口统一先过 `MemberService.EnsureActive`，禁用会员一律报 `MemberDisabled`。
 - 地址与签到分别占用错误码子模块 `007` / `008`。
 
+### 4.12 注释规范
+
+**每个函数 / 方法都必须写注释**，说清「做什么 + 关键约束 + 入参 + 返回什么」，
+**禁止**写成 `// Index GET /api/v1/system/users` 这种复述路由的形式（零信息量，已全量整改）。
+
+```go
+// Index 分页查询后台用户，支持账号、昵称、手机号与状态筛选。
+// 入参：username、nickname、mobile、status、pageNo、pageSize（查询串）；返回用户列表与总数。
+func (c *UserController) Index(ctx http.Context) http.Response {
+
+// Delete 软删除分组；记录不存在时返回业务错误码。
+func (r *MemberGroupRepository) Delete(ctx context.Context, m *model.MemberGroupModel) error {
+
+// normalizeTagInput 清洗入参并校验名称、状态等字段。
+func normalizeTagInput(in *MemberTagSaveInput) error {
+```
+
+- **Controller**：写业务动作 + 可选筛选条件，再单列 `入参：`（查询串 / 请求体 / 路径 id）与 `返回：`（列表 + 总数 / 详情 / null）。
+- **Service**：写清业务规则与边界（唯一键、事务、软删、缓存版本前移），参数多时列关键字段。
+- **Repository**：写清查询条件、排序与「不存在返回 nil」这类约定。
+- **私有小函数**（键构造、校验、类型转换）也要一句话说明用途，不要裸函数。
+- **构造函数** `NewXxx` 一句说清装配了哪些依赖。
+- **迁移**：`Up` 写清建表 / 补列 / 种子内容与幂等前提，`Down` 写清回滚动作。
+- **前端**：TS / Vue 函数上方用 `// 中文说明`，写触发时机与副作用（如「搜索：合并条件后重新查询」）。
+
 ---
 
 ## 5. 后端模板
@@ -381,7 +406,13 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 ### 5.1 Controller
 
 ```go
-// Index GET /api/v1/infra/xxx
+// NewXxxController 构造 xxx 控制器。
+func NewXxxController() *XxxController {
+    return &XxxController{service: service.NewXxxService()}
+}
+
+// Index 分页查询 xxx，支持按关键字与状态筛选。
+// 入参：keyword、status、pageNo、pageSize（查询串）；返回列表与总数。
 func (c *XxxController) Index(ctx http.Context) http.Response {
     page := param.Page{
         PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -403,7 +434,8 @@ func (c *XxxController) Index(ctx http.Context) http.Response {
     return result.Page(ctx, list, total)
 }
 
-// Store POST /api/v1/infra/xxx
+// Store 新增 xxx；同一 name 不允许重复。
+// 入参：name、status、remark；返回新记录 ID。
 func (c *XxxController) Store(ctx http.Context) http.Response {
     var req request.XxxRequest
     if err := param.Bind(ctx, &req); err != nil {
@@ -423,10 +455,12 @@ type XxxService struct {
     items *repository.XxxRepository
 }
 
+// NewXxxService 构造 Service，装配 xxx 仓储。
 func NewXxxService() *XxxService {
     return &XxxService{items: repository.NewXxxRepository()}
 }
 
+// Create 校验入参后写入一条记录，名称做 trim 后为空直接报错。
 func (s *XxxService) Create(ctx context.Context, in XxxInput) error {
     if err := validateXxx(in); err != nil {
         return err
@@ -756,17 +790,20 @@ const {
   },
 });
 
+// 搜索：合并搜索栏条件后重新查询
 const handleSearch = (params: Api.Infra.XxxSearchParams) => {
   Object.assign(searchParams, params);
   getData();
 };
 
+// 打开弹窗：新增清空当前行，编辑带上被操作的行数据
 const showDialog = (type: "add" | "edit", row?: XxxItem) => {
   dialogType.value = type;
   currentRow.value = type === "edit" ? (row ?? null) : null;
   dialogVisible.value = true;
 };
 
+// 弹窗提交成功：新增回第一页，编辑保留当前页
 const handleDialogSuccess = () => {
   dialogType.value === "edit" ? refreshUpdate() : refreshCreate();
 };
@@ -819,6 +856,7 @@ const emit = defineEmits<{
   (e: "success"): void;
 }>();
 
+// 弹窗显隐与父组件 v-model:visible 双向绑定
 const dialogVisible = computed({
   get: () => props.visible,
   set: (value) => emit("update:visible", value),
@@ -832,6 +870,7 @@ const rules: FormRules = {
   name: [{ required: true, message: "请输入名称", trigger: "blur" }],
 };
 
+// 每次打开弹窗时按当前行回填表单并清掉上一次的校验提示
 watch(
   () => props.visible,
   (visible) => {
@@ -842,6 +881,7 @@ watch(
   { immediate: true },
 );
 
+// 提交表单：校验通过后按新增 / 编辑调用接口，成功后关闭并通知父页面刷新
 const handleSubmit = async () => {
   const valid = await formRef.value?.validate().catch(() => false);
   if (!valid) return;
@@ -957,6 +997,7 @@ MySQL 在"新旧值相同"时 `RowsAffected` 为 0，不要直接判定记录不
 - [ ] 路由挂了正确的 `perm(...)`，权限点已写入菜单种子
 - [ ] 新迁移已注册到 `bootstrap/migrations.go`，且幂等
 - [ ] 菜单/权限变更已前移 `rbac:version`
+- [ ] 新增/修改的函数都有注释，写清做什么、入参、返回（不是 `// Index GET /api/...`）
 - [ ] `go build ./...`、`go vet ./...` 通过
 
 **前端**
@@ -967,4 +1008,5 @@ MySQL 在"新旧值相同"时 `RowsAffected` 为 0，不要直接判定记录不
 - [ ] 新增/编辑/删除后调用 `refreshCreate / refreshUpdate / refreshRemove`
 - [ ] 接口封装在 `api/{模块}`，类型写在 `Api.{模块}` 命名空间
 - [ ] 弹窗用 `v-model:visible` + `emit('success')`
+- [ ] 函数上方有 `// 中文说明`，写清触发时机与副作用
 - [ ] `npx vue-tsc --noEmit`、`eslint` 通过

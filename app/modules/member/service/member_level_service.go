@@ -37,6 +37,7 @@ type MemberLevelService struct {
 	levels *repository.MemberLevelRepository
 }
 
+// NewMemberLevelService 构造会员等级服务。
 func NewMemberLevelService() *MemberLevelService {
 	return &MemberLevelService{levels: repository.NewMemberLevelRepository()}
 }

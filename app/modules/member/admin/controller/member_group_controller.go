@@ -15,11 +15,13 @@ type MemberGroupController struct {
 	service *service.MemberGroupService
 }
 
+// NewMemberGroupController 构造会员分组控制器。
 func NewMemberGroupController() *MemberGroupController {
 	return &MemberGroupController{service: service.NewMemberGroupService()}
 }
 
-// Index GET /api/v1/member/groups
+// Index 分页查询会员分组，支持按名称模糊与状态筛选。
+// 入参：keyword、status、pageNo、pageSize（查询串）；返回分组列表与总数。
 func (c *MemberGroupController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -47,7 +49,8 @@ func (c *MemberGroupController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Options GET /api/v1/member/groups/options
+// Options 查询启用中的分组，供会员表单下拉。
+// 无入参；返回分组列表。
 func (c *MemberGroupController) Options(ctx http.Context) http.Response {
 	list, err := c.service.Options(ctx.Context())
 	if err != nil {
@@ -57,7 +60,8 @@ func (c *MemberGroupController) Options(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// Store POST /api/v1/member/groups
+// Store 新增会员分组。
+// 入参：name、status、remark；返回新分组 ID。
 func (c *MemberGroupController) Store(ctx http.Context) http.Response {
 	var req request.MemberGroupSaveRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -76,7 +80,8 @@ func (c *MemberGroupController) Store(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// Update PUT /api/v1/member/groups/{id}
+// Update 编辑会员分组的名称、状态与备注。
+// 入参：路径 id + name、status、remark；返回 null。
 func (c *MemberGroupController) Update(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -99,7 +104,8 @@ func (c *MemberGroupController) Update(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Destroy DELETE /api/v1/member/groups/{id}
+// Destroy 删除会员分组（软删）。
+// 入参：路径 id；返回 null。
 func (c *MemberGroupController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

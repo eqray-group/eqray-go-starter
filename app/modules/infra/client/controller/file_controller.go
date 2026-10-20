@@ -18,9 +18,8 @@ func NewFileController() *FileController {
 	return &FileController{service: service.NewFileService()}
 }
 
-// Upload POST /api/v1/client/infra/files
-// 表单字段固定为 file，成功返回文件 id 与可直接访问的 url。
-// 上传后的文件仍记在 infra_file，由后台文件管理统一查看与清理。
+// Upload C 端上传文件（头像、凭证图片等），只要求会员令牌。
+// 入参：multipart 字段 file；返回文件 id、名称、可直接访问的 url、类型与大小，记录统一存入 infra_file。
 func (c *FileController) Upload(ctx http.Context) http.Response {
 	file, err := ctx.Request().File("file")
 	if err != nil || file == nil {

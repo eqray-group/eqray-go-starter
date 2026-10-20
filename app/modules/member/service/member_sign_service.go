@@ -63,6 +63,7 @@ type MemberSignService struct {
 	levels  *repository.MemberLevelRepository
 }
 
+// NewMemberSignService 构造会员签到服务。
 func NewMemberSignService() *MemberSignService {
 	return &MemberSignService{
 		members: repository.NewMemberRepository(),

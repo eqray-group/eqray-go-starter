@@ -19,8 +19,8 @@ func NewFileController() *FileController {
 	return &FileController{service: service.NewFileService()}
 }
 
-// Upload POST /api/v1/infra/files
-// 后台自助上传（头像等），只要求登录态、不校验具体权限点；写操作由路由上的 OperateLog 留痕。
+// Upload 后台上传文件（头像等自助场景），只要求登录态、不校验权限点。
+// 入参：multipart 字段 file；返回文件 id、名称、访问地址、类型与大小。
 func (c *FileController) Upload(ctx http.Context) http.Response {
 	file, err := ctx.Request().File("file")
 	if err != nil || file == nil {
@@ -41,8 +41,8 @@ func (c *FileController) Upload(ctx http.Context) http.Response {
 	})
 }
 
-// Index GET /api/v1/infra/files
-// 文件管理页的列表，按上传时间倒序。
+// Index 分页查询文件列表，按上传时间倒序，支持按文件名关键字搜索。
+// 入参：keyword、pageNo、pageSize（查询串）；返回文件列表与总数。
 func (c *FileController) Index(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -64,7 +64,8 @@ func (c *FileController) Index(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Destroy DELETE /api/v1/infra/files/{id}
+// Destroy 删除文件记录并清理物理文件，按记录上的配置选择存储驱动。
+// 入参：路径 id；返回 null。
 func (c *FileController) Destroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {

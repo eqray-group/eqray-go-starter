@@ -16,8 +16,8 @@ func NewDashboardController() *DashboardController {
 	return &DashboardController{service: service.NewDashboardService()}
 }
 
-// Overview GET /api/v1/system/dashboard/overview
-// 控制台是所有登录用户的默认首页，只挂登录态，不挂具体权限点。
+// Overview 查询控制台概览数据（用户数、登录趋势等）。
+// 无入参，仅要求登录态；返回概览统计。
 func (c *DashboardController) Overview(ctx http.Context) http.Response {
 	data, err := c.service.Overview(ctx.Context())
 	if err != nil {

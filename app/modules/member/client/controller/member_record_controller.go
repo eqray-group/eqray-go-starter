@@ -16,6 +16,7 @@ type MemberRecordController struct {
 	levels  *service.MemberLevelService
 }
 
+// NewMemberRecordController 构造 C 端会员记录查询控制器。
 func NewMemberRecordController() *MemberRecordController {
 	return &MemberRecordController{
 		members: service.NewMemberService(),
@@ -23,7 +24,8 @@ func NewMemberRecordController() *MemberRecordController {
 	}
 }
 
-// PointRecords GET /api/v1/client/member/points/records
+// PointRecords 分页查询当前会员的积分流水，按时间倒序。
+// 入参：pageNo / pageSize（查询串）；返回流水列表与总数。
 func (c *MemberRecordController) PointRecords(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if _, err := c.members.EnsureActive(ctx.Context(), memberID); err != nil {
@@ -43,7 +45,8 @@ func (c *MemberRecordController) PointRecords(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// SignRecords GET /api/v1/client/member/sign/records
+// SignRecords 分页查询当前会员的签到记录。
+// 入参：pageNo / pageSize（查询串）；返回签到记录列表与总数。
 func (c *MemberRecordController) SignRecords(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if _, err := c.members.EnsureActive(ctx.Context(), memberID); err != nil {
@@ -63,7 +66,8 @@ func (c *MemberRecordController) SignRecords(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// LevelRecords GET /api/v1/client/member/level/records
+// LevelRecords 分页查询当前会员的等级变更记录。
+// 入参：pageNo / pageSize（查询串）；返回等级记录列表与总数。
 func (c *MemberRecordController) LevelRecords(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if _, err := c.members.EnsureActive(ctx.Context(), memberID); err != nil {
@@ -83,8 +87,8 @@ func (c *MemberRecordController) LevelRecords(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// Levels GET /api/v1/client/member/levels
-// 返回启用中的等级列表，并带上当前会员的等级与经验，供前端画升级进度。
+// Levels 查询启用中的等级列表，并带上当前会员的等级与经验，供前端画升级进度。
+// 无入参，会员身份取自令牌；返回 { list, currentLevelId, experience }。
 func (c *MemberRecordController) Levels(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	m, err := c.members.EnsureActive(ctx.Context(), memberID)

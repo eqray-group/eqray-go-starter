@@ -32,10 +32,12 @@ type MemberGroupService struct {
 	groups *repository.MemberGroupRepository
 }
 
+// NewMemberGroupService 构造会员分组服务。
 func NewMemberGroupService() *MemberGroupService {
 	return &MemberGroupService{groups: repository.NewMemberGroupRepository()}
 }
 
+// Page 分页查询分组，关键字做 trim 后按名称模糊匹配。
 func (s *MemberGroupService) Page(ctx context.Context, q MemberGroupListQuery) ([]model.MemberGroupModel, int64, error) {
 	return s.groups.Paginate(ctx, repository.MemberGroupFilter{
 		Keyword: strings.TrimSpace(q.Keyword),
@@ -48,6 +50,7 @@ func (s *MemberGroupService) Options(ctx context.Context) ([]model.MemberGroupMo
 	return s.groups.Enabled(ctx)
 }
 
+// Detail 查询分组详情，不存在时返回业务错误码。
 func (s *MemberGroupService) Detail(ctx context.Context, id types.ID) (*model.MemberGroupModel, error) {
 	m, err := s.groups.FindByID(ctx, id)
 	if err != nil {
@@ -60,6 +63,7 @@ func (s *MemberGroupService) Detail(ctx context.Context, id types.ID) (*model.Me
 	return m, nil
 }
 
+// Create 新增分组，返回新记录 ID。
 func (s *MemberGroupService) Create(ctx context.Context, in MemberGroupSaveInput) (types.ID, error) {
 	if err := normalizeGroupInput(&in); err != nil {
 		return 0, err
@@ -77,6 +81,7 @@ func (s *MemberGroupService) Create(ctx context.Context, in MemberGroupSaveInput
 	return m.ID, nil
 }
 
+// Update 编辑分组名称、状态与备注。
 func (s *MemberGroupService) Update(ctx context.Context, id types.ID, in MemberGroupSaveInput) error {
 	if err := normalizeGroupInput(&in); err != nil {
 		return err
@@ -94,6 +99,7 @@ func (s *MemberGroupService) Update(ctx context.Context, id types.ID, in MemberG
 	return s.groups.Update(ctx, m)
 }
 
+// Delete 删除分组（软删）。
 func (s *MemberGroupService) Delete(ctx context.Context, id types.ID) error {
 	m, err := s.Detail(ctx, id)
 	if err != nil {
@@ -103,6 +109,7 @@ func (s *MemberGroupService) Delete(ctx context.Context, id types.ID) error {
 	return s.groups.Delete(ctx, m)
 }
 
+// normalizeGroupInput 清洗入参并校验名称、状态等字段。
 func normalizeGroupInput(in *MemberGroupSaveInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Remark = strings.TrimSpace(in.Remark)

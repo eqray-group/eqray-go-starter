@@ -19,7 +19,8 @@ func NewDictController() *DictController {
 	return &DictController{service: service.NewDictService()}
 }
 
-// Types GET /api/v1/system/dict-types
+// Types 分页查询字典类型，支持按名称、类型编码与状态筛选。
+// 入参：name、type、status、pageNo、pageSize（查询串）；返回类型列表与总数。
 func (c *DictController) Types(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -48,8 +49,8 @@ func (c *DictController) Types(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// TypeOptions GET /api/v1/system/dict-types/options
-// 字典数据弹窗选择所属类型时使用，返回全部启用类型。
+// TypeOptions 查询启用中的字典类型，供字典数据弹窗选择所属类型。
+// 无入参；返回类型列表。
 func (c *DictController) TypeOptions(ctx http.Context) http.Response {
 	list, err := c.service.TypeOptions(ctx.Context())
 	if err != nil {
@@ -59,7 +60,8 @@ func (c *DictController) TypeOptions(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// TypeShow GET /api/v1/system/dict-types/{id}
+// TypeShow 查询单个字典类型详情。
+// 入参：路径 id；返回类型详情，不存在返回业务错误码。
 func (c *DictController) TypeShow(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -74,7 +76,8 @@ func (c *DictController) TypeShow(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// TypeStore POST /api/v1/system/dict-types
+// TypeStore 新增字典类型；类型编码唯一，重复时返回业务错误码。
+// 入参：name、type、status、remark；返回新类型 ID。
 func (c *DictController) TypeStore(ctx http.Context) http.Response {
 	var req request.DictTypeCreateRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -94,7 +97,8 @@ func (c *DictController) TypeStore(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// TypeUpdate PUT /api/v1/system/dict-types/{id}
+// TypeUpdate 编辑字典类型名称、编码、状态与备注。
+// 入参：路径 id + name、type、status、remark；返回 null。
 func (c *DictController) TypeUpdate(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -119,7 +123,8 @@ func (c *DictController) TypeUpdate(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// TypeDestroy DELETE /api/v1/system/dict-types/{id}
+// TypeDestroy 删除字典类型（软删）；其下仍有字典数据时由服务层拒绝。
+// 入参：路径 id；返回 null。
 func (c *DictController) TypeDestroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -133,7 +138,8 @@ func (c *DictController) TypeDestroy(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Data GET /api/v1/system/dict-data
+// Data 分页查询字典数据，支持按类型编码、标签与状态筛选。
+// 入参：dictType、label、status、pageNo、pageSize（查询串）；返回数据列表与总数。
 func (c *DictController) Data(ctx http.Context) http.Response {
 	page := param.Page{
 		PageNo:   ctx.Request().QueryInt("pageNo", 1),
@@ -162,7 +168,8 @@ func (c *DictController) Data(ctx http.Context) http.Response {
 	return result.Page(ctx, list, total)
 }
 
-// DataShow GET /api/v1/system/dict-data/{id}
+// DataShow 查询单条字典数据详情。
+// 入参：路径 id；返回数据详情，不存在返回业务错误码。
 func (c *DictController) DataShow(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -177,7 +184,8 @@ func (c *DictController) DataShow(ctx http.Context) http.Response {
 	return result.Success(ctx, m)
 }
 
-// DataStore POST /api/v1/system/dict-data
+// DataStore 新增字典数据；同一类型下数据值唯一。
+// 入参：dictType、label、value、sort、status、colorType、cssClass、remark；返回新数据 ID。
 func (c *DictController) DataStore(ctx http.Context) http.Response {
 	var req request.DictDataCreateRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -201,7 +209,8 @@ func (c *DictController) DataStore(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"id": id})
 }
 
-// DataUpdate PUT /api/v1/system/dict-data/{id}
+// DataUpdate 编辑字典数据的标签、值、排序、状态与样式。
+// 入参：路径 id + 数据字段；返回 null。
 func (c *DictController) DataUpdate(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -230,7 +239,8 @@ func (c *DictController) DataUpdate(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// DataDestroy DELETE /api/v1/system/dict-data/{id}
+// DataDestroy 删除单条字典数据（软删）。
+// 入参：路径 id；返回 null。
 func (c *DictController) DataDestroy(ctx http.Context) http.Response {
 	id, err := param.PathID(ctx)
 	if err != nil {
@@ -244,8 +254,8 @@ func (c *DictController) DataDestroy(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Items GET /api/v1/system/dicts/{type}
-// 前端下拉与标签渲染统一走这里，只需登录态，不挂具体权限点。
+// Items 按类型编码查询启用中的字典数据，前端下拉与标签渲染统一走这里，只要求登录态。
+// 入参：路径 type（类型编码）；返回字典项列表。
 func (c *DictController) Items(ctx http.Context) http.Response {
 	items, err := c.service.Items(ctx.Context(), ctx.Request().Route("type"))
 	if err != nil {
