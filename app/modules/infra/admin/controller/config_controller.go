@@ -5,7 +5,7 @@ import (
 
 	"eqray-go-starter/app/modules/base/param"
 	"eqray-go-starter/app/modules/base/result"
-	"eqray-go-starter/app/modules/infra/request"
+	"eqray-go-starter/app/modules/infra/admin/request"
 	"eqray-go-starter/app/modules/infra/service"
 )
 

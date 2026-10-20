@@ -10,7 +10,7 @@ import (
 	"eqray-go-starter/app/modules/infra/service"
 )
 
-// FileController 提供文件上传与删除接口。
+// FileController 提供后台的文件上传、列表与删除接口；C 端上传见 client/controller。
 type FileController struct {
 	service *service.FileService
 }
@@ -20,7 +20,7 @@ func NewFileController() *FileController {
 }
 
 // Upload POST /api/v1/infra/files
-// 表单字段固定为 file，成功返回文件 id 与可直接访问的 url。
+// 后台自助上传（头像等），只要求登录态、不校验具体权限点；写操作由路由上的 OperateLog 留痕。
 func (c *FileController) Upload(ctx http.Context) http.Response {
 	file, err := ctx.Request().File("file")
 	if err != nil || file == nil {

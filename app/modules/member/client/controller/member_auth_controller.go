@@ -9,7 +9,7 @@ import (
 	"eqray-go-starter/app/modules/base/result"
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
-	"eqray-go-starter/app/modules/member/request"
+	"eqray-go-starter/app/modules/member/client/request"
 	"eqray-go-starter/app/modules/member/service"
 )
 
@@ -26,7 +26,7 @@ func NewMemberAuthController() *MemberAuthController {
 	}
 }
 
-// SmsCode POST /api/v1/member/auth/sms-code
+// SmsCode POST /api/v1/client/member/auth/sms-code
 func (c *MemberAuthController) SmsCode(ctx http.Context) http.Response {
 	var req request.MemberSmsCodeRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -40,7 +40,7 @@ func (c *MemberAuthController) SmsCode(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// SmsLogin POST /api/v1/member/auth/sms-login
+// SmsLogin POST /api/v1/client/member/auth/sms-login
 func (c *MemberAuthController) SmsLogin(ctx http.Context) http.Response {
 	var req request.MemberSmsLoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -60,7 +60,7 @@ func (c *MemberAuthController) SmsLogin(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// SocialBindLogin POST /api/v1/member/auth/social-bind-login
+// SocialBindLogin POST /api/v1/client/member/auth/social-bind-login
 func (c *MemberAuthController) SocialBindLogin(ctx http.Context) http.Response {
 	var req request.MemberSocialBindLoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -83,7 +83,7 @@ func (c *MemberAuthController) SocialBindLogin(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// AuthorizeURL GET /api/v1/member/auth/social/{type}/authorize-url
+// AuthorizeURL GET /api/v1/client/member/auth/social/{type}/authorize-url
 // 公众号 / 网站扫码返回跳转地址；小程序返回空串，由前端 wx.login 取 code。
 func (c *MemberAuthController) AuthorizeURL(ctx http.Context) http.Response {
 	url, err := c.service.AuthorizeURL(
@@ -99,7 +99,7 @@ func (c *MemberAuthController) AuthorizeURL(ctx http.Context) http.Response {
 	return result.Success(ctx, map[string]any{"url": url})
 }
 
-// SocialLogin POST /api/v1/member/auth/social/login
+// SocialLogin POST /api/v1/client/member/auth/social/login
 func (c *MemberAuthController) SocialLogin(ctx http.Context) http.Response {
 	var req request.MemberSocialLoginRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -119,7 +119,7 @@ func (c *MemberAuthController) SocialLogin(ctx http.Context) http.Response {
 	return result.Success(ctx, res)
 }
 
-// Refresh POST /api/v1/member/auth/refresh
+// Refresh POST /api/v1/client/member/auth/refresh
 func (c *MemberAuthController) Refresh(ctx http.Context) http.Response {
 	var req request.MemberRefreshRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -134,7 +134,7 @@ func (c *MemberAuthController) Refresh(ctx http.Context) http.Response {
 	return result.Success(ctx, tokens)
 }
 
-// Logout POST /api/v1/member/auth/logout
+// Logout POST /api/v1/client/member/auth/logout
 func (c *MemberAuthController) Logout(ctx http.Context) http.Response {
 	var req request.MemberLogoutRequest
 	if err := param.Bind(ctx, &req); err != nil {
@@ -149,7 +149,7 @@ func (c *MemberAuthController) Logout(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Me GET /api/v1/member/auth/me
+// Me GET /api/v1/client/member/auth/me
 func (c *MemberAuthController) Me(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {
@@ -164,7 +164,7 @@ func (c *MemberAuthController) Me(ctx http.Context) http.Response {
 	return result.Success(ctx, member)
 }
 
-// Bind POST /api/v1/member/auth/social/bind
+// Bind POST /api/v1/client/member/auth/social/bind
 func (c *MemberAuthController) Bind(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {
@@ -188,7 +188,7 @@ func (c *MemberAuthController) Bind(ctx http.Context) http.Response {
 	return result.Success(ctx, nil)
 }
 
-// Bindings GET /api/v1/member/auth/social/bindings
+// Bindings GET /api/v1/client/member/auth/social/bindings
 func (c *MemberAuthController) Bindings(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {
@@ -203,7 +203,7 @@ func (c *MemberAuthController) Bindings(ctx http.Context) http.Response {
 	return result.Success(ctx, list)
 }
 
-// Unbind DELETE /api/v1/member/auth/social/bindings/{id}
+// Unbind DELETE /api/v1/client/member/auth/social/bindings/{id}
 func (c *MemberAuthController) Unbind(ctx http.Context) http.Response {
 	memberID := support.MemberID(ctx.Context())
 	if memberID == 0 {

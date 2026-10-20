@@ -96,18 +96,23 @@ app/
 │   │   ├── result/                # 响应输出助手（Success / Page / Fail）
 │   │   ├── middleware/            # recovery / exception_handler（含错误槽）/ cors / request_log / token_auth / member_auth / permission
 │   │   └── support/               # 树构建、雪花ID（节点号取 SNOWFLAKE_NODE_ID）、1062 判重、加解密、导出
-│   ├── system/                    # 系统关联模块
-│   │   ├── enums/ errs/ model/ repository/ service/ controller/ request/
+│   ├── system/                    # 系统关联模块（仅管理端）
+│   │   ├── admin/{controller,request}/   # 前缀 /api/v1/system
+│   │   ├── enums/ errs/ model/ repository/ service/
 │   │   ├── middleware/            # operate_log（按路由元数据采集操作日志）
-│   │   └── route.go               # func Register()
+│   │   └── route.go               # 聚合：admin.Register()
 │   ├── infra/                     # 基础设施模块
-│   │   ├── enums/ errs/ model/ repository/ service/ controller/ request/
+│   │   ├── admin/{controller,request}/   # 前缀 /api/v1/infra
+│   │   ├── client/{controller,request}/  # 前缀 /api/v1/client/infra
+│   │   ├── enums/ errs/ model/ repository/ service/
 │   │   ├── middleware/            # api_access_log（落库）、api_error_log
 │   │   ├── job/                   # 定时任务处理器
-│   │   └── route.go
+│   │   └── route.go               # 聚合：admin.Register() + client.Register()
 │   └── member/                    # 会员模块
-│       ├── enums/ errs/ model/ repository/ service/ controller/ request/
-│       └── route.go
+│       ├── admin/{controller,request}/   # 前缀 /api/v1/member
+│       ├── client/{controller,request}/  # 前缀 /api/v1/client/member
+│       ├── enums/ errs/ model/ repository/ service/
+│       └── route.go               # 聚合：admin.Register() + client.Register()
 routes/
 ├── web.go                         # 保留欢迎页
 ├── grpc.go                        # 保留
@@ -638,10 +643,22 @@ CREATE TABLE system_users (
 
 ### 7.1 路由总览
 
-统一前缀 `/api/v1`，按模块作为第一级路径。
+统一前缀 `/api/v1`。**后台管理与 C 端使用不同前缀**，同一业务域的代码仍在同一个模块里：
+后台走 `/api/v1/{模块}`，C 端走 `/api/v1/client/{模块}`。模块内部按端拆目录，
+`admin/route.go` 与 `client/route.go` 各自注册，模块的 `route.go` 只做聚合。
 
 ```
 /api/v1
+├── client/                          # C 端（小程序 / H5 / App），只校验会员令牌
+│   ├── infra/
+│   │   └── files                   文件上传（头像、评价图等自助场景）
+│   └── member/
+│       ├── auth/{sms-code,sms-login,social-bind-login}
+│       ├── auth/{social/login,refresh,logout,me}
+│       ├── auth/social/{authorize-url,bind,bindings}
+│       ├── profile                 我的资料
+│       └── sign                    每日签到
+│
 ├── system/                          # 后台管理端
 │   ├── auth/{login,logout,refresh,captcha}
 │   ├── profile                     我的资料
@@ -660,28 +677,25 @@ CREATE TABLE system_users (
 │   ├── member-levels               会员等级管理（实现在 member 模块）
 │   └── logs/{operate,login}        操作日志 / 登录日志
 │
-├── infra/                           # 基础设施
+├── infra/                           # 后台：基础设施
 │   ├── configs                     参数配置
-│   ├── files                       文件管理
+│   ├── files                       文件上传（自助）/ 列表 / 删除
 │   ├── file-configs                文件配置
-│   ├── jobs                        定时任务
-│   ├── job-logs                    任务日志
+│   ├── sms-channels / sms-templates 短信渠道与模板
 │   └── api-logs/{access,error}     API 访问 / 错误日志
 │
-└── member/                          # 会员端
-    ├── auth/{sms-code,sms-login,social-bind-login}
-    ├── auth/{social/login,refresh,logout,me}
-    ├── auth/social/{authorize-url,bind,bindings}
-    ├── profile                     我的资料
-    └── sign                        每日签到
+└── member/                          # 后台：会员管理
+    ├── users                       会员档案
+    ├── levels / tags / groups      等级 / 标签 / 分组
+    └── social-clients              第三方登录渠道配置
 ```
 
 后台短信配置页挂在 `/api/v1/infra/sms-channels` 与 `/api/v1/infra/sms-templates`，
-权限点 `infra:sms-channel:*` / `infra:sms-template:*`；会员端 `/api/v1/member/auth/sms-*` 只负责
+权限点 `infra:sms-channel:*` / `infra:sms-template:*`；会员端 `/api/v1/client/member/auth/sms-*` 只负责
 验证码的生成、校验与登录态，发送动作委托 infra 的 `InfraSmsService`。
 
 会员端登录态与后台登录态使用**同一套双令牌实现、不同的 Redis 作用域**：
-会员令牌落在 `auth:member:access:<hash>`，由 `member/middleware.MemberAuth` 校验，后台 `TokenAuth` 无法识别，
+会员令牌落在 `auth:member:access:<hash>`，由 `base/middleware.MemberAuth` 校验，后台 `TokenAuth` 无法识别，
 反之亦然。第三方渠道（微信小程序 / 公众号 / 开放平台）的凭据放在 `member_social_client` 表，
 由后台 `会员管理 → 社交客户端` 页面配置（对齐 yudao 的 `system_social_client`，数据库优先，不走环境变量）。
 
@@ -694,8 +708,11 @@ member 通过 `infra/service.InfraSmsService.Send` 复用发送能力（与 yuda
 渠道实现按 `code` 选择官方 SDK：`DebugLog`（本地日志，默认）、`AliyunSms`（阿里云 `dysmsapi` SDK）、
 `TencentSms`（腾讯云 `sms/v20210111` SDK）。
 
-后台管理会员数据的路由统一挂在 `/api/v1/member/*`，由 `member.Register()` 注册，
-受 base 的 `token_auth` + `permission` 中间件保护；会员端 `/api/v1/member/auth/*` 不经过后台权限体系。
+后台管理会员数据的路由统一挂在 `/api/v1/member/*`，由 `member/admin/route.go` 注册，
+受 base 的 `token_auth` + `permission` 中间件保护；会员端接口挂在 `/api/v1/client/member/*`，
+由 `member/client/route.go` 注册，只经过 `member_auth`，不进入后台权限体系。
+`infra` 同理：`/api/v1/infra/*` 与 `/api/v1/client/infra/*` 分别由 `infra/admin`、`infra/client` 注册，
+目前 C 端只开放文件上传。
 
 `system/logs/login` 的数据来自 base 的认证组件，system 通过其 Service 读取，不直接查 `auth_login_log`。
 
@@ -918,7 +935,7 @@ func (i *ID) Scan(src any) error {
 | 维度 | 后台（system） | 会员（member） |
 |---|---|---|
 | 账号表 | `system_users` | `member_user` |
-| 登录入口 | `/api/v1/system/auth/login` | `/api/v1/member/auth/login` |
+| 登录入口 | `/api/v1/system/auth/login` | `/api/v1/client/member/auth/{sms-login,social/login}` |
 | 认证 guard | `admin` | `member` |
 | 中间件 | `token_auth` | `member_auth` |
 | 令牌载荷 | 无，令牌即 Redis key | 无，令牌即 Redis key |
@@ -1194,10 +1211,15 @@ return errs.New(errs.SystemUsernameExists, username)
 | `app/modules/{module}/enums/xxx_type.go` | 本模块专属枚举；启停状态复用 base 公共枚举，不建 `xxx_status.go`（11.1） |
 | `app/modules/{module}/repository/xxx_repository.go` | 单表读写，唯一出现 SQL/构造器的地方 |
 | `app/modules/{module}/service/xxx_service.go` | 业务规则、事务边界，直接持有具体仓储类型 |
-| `app/modules/{module}/controller/xxx_controller.go` | 取参 → 调 Service → 出响应 |
-| `app/modules/{module}/request/xxx_request.go` | 入参、校验规则与中文文案 |
+| `app/modules/{module}/admin/controller/xxx_controller.go` | 取参 → 调 Service → 出响应（C 端放 `client/controller`） |
+| `app/modules/{module}/admin/request/xxx_request.go` | 入参、校验规则与中文文案（C 端放 `client/request`） |
 | `app/modules/{module}/errs/{module}_error.go` | 本模块业务错误码（一模块一文件，只追加） |
-| `app/modules/{module}/route.go` | 追加路由 |
+| `app/modules/{module}/admin/route.go` | 追加管理端路由（C 端写 `client/route.go`） |
+
+**controller / request / route 按端分目录**（见 7.1）：`app/modules/{module}/admin/{controller,request,route.go}`
+与 `app/modules/{module}/client/{controller,request,route.go}`，`service` / `repository` / `model` / `errs`
+两端共用；`{module}/route.go` 只负责调用 `admin.Register()` 与 `client.Register()`。
+`system` 目前只有 `admin/`（C 端不需要系统管理能力），`infra` / `member` 两端都有。
 | `database/migrations/YYYYMMDDHHMMSS_create_xxx_table.go` | 建表 |
 
 跨层复用的助手放在 base，不放业务模块：`base/result`（`Success` / `Page` / `Fail`）、`base/param`（`Bind` / `Validate` / `PathID` / `Page`）、`base/response`（`Body` / `FailBody` 与对应构造函数）、`base/support`（`IsDuplicate` / `NewID` / `UserID`）。
@@ -1502,7 +1524,7 @@ func (r *XxxCreateRequest) Messages(ctx http.Context) map[string]string {
 ### 15.6 Controller
 
 ```go
-// Package controller 存放 system 模块的控制器，只做取参、调 Service、出响应。
+// Package controller 存放 system 模块的控制器（admin/controller），只做取参、调 Service、出响应。
 package controller
 
 import (
@@ -1510,7 +1532,7 @@ import (
 
 	"eqray-go-starter/app/modules/base/param"
 	"eqray-go-starter/app/modules/base/result"
-	"eqray-go-starter/app/modules/system/request"
+	"eqray-go-starter/app/modules/system/admin/request"
 	"eqray-go-starter/app/modules/system/service"
 )
 
@@ -1577,7 +1599,10 @@ func (c *XxxController) Show(ctx http.Context) http.Response {
 
 ### 15.7 Route
 
+管理端接口写在 `{module}/admin/route.go`（C 端写 `{module}/client/route.go`），模块根目录的 `route.go` 只做聚合：
+
 ```go
+// admin/route.go
 func Register() {
 	xxxController := controller.NewXxxController()
 
@@ -1591,7 +1616,15 @@ func Register() {
 }
 ```
 
-后台路由追加 `.Middleware(operate("模块名", "操作名"))` 声明操作语义（9.5），并挂到 `permission` 组内；会员端路由挂 `member_auth`，不做接口级权限控制。
+```go
+// route.go —— 只聚合
+func Register() {
+	admin.Register()
+	client.Register() // 该模块还没有 C 端接口时省略这一行
+}
+```
+
+后台路由追加 `.Middleware(operate("模块名", "操作名"))` 声明操作语义（9.5），并挂到 `permission` 组内；C 端路由挂 `member_auth`，不做接口级权限控制。
 
 ### 15.8 错误码
 

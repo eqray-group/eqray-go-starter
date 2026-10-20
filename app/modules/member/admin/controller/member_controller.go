@@ -9,7 +9,7 @@ import (
 	"eqray-go-starter/app/modules/base/param"
 	"eqray-go-starter/app/modules/base/result"
 	"eqray-go-starter/app/modules/base/types"
-	"eqray-go-starter/app/modules/member/request"
+	"eqray-go-starter/app/modules/member/admin/request"
 	"eqray-go-starter/app/modules/member/service"
 )
 

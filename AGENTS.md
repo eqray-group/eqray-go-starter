@@ -58,18 +58,46 @@ app/
   facades/                 # 框架门面（DB / Schema / Cache / Storage / Config ...）
   http/                    # 中间件、异常处理等装配
   modules/
-    base/                  # 认证、响应、错误码、参数、枚举、类型、权限中间件
+    base/                  # 认证、响应、错误码、参数、枚举、类型、TokenAuth/MemberAuth 中间件
     system/                # 登录认证、用户、角色、菜单、字典、日志
-    infra/                 # 参数配置、文件、文件配置、API 日志
-    member/                # 会员档案（C 端会员，与 system_users 登录账号分离）
-      route.go             # 模块路由入口（Register）
-      controller/          # 参数绑定 + 调 service + 统一响应
+      route.go             # 聚合入口（admin.Register；C 端暂无接口）
+      admin/               # 管理端，前缀 /api/v1/system
+        route.go
+        controller/
+        request/
       service/             # 业务规则、事务编排
       repository/          # 数据访问
       model/               # 表模型
-      request/             # 入参结构 + 校验规则 + 中文提示
       errs/                # 模块业务错误码
-      middleware/          # 请求日志等
+    infra/                 # 参数配置、文件、文件配置、API 日志、短信
+      route.go             # 聚合入口（admin.Register + client.Register）
+      admin/               # 管理端，前缀 /api/v1/infra
+        route.go
+        controller/
+        request/
+      client/              # C 端，前缀 /api/v1/client/infra（目前只有文件上传）
+        route.go
+        controller/
+        request/
+      service/             # 业务规则、事务编排（两端共用）
+      repository/          # 数据访问
+      model/               # 表模型
+      errs/                # 模块业务错误码
+      support/             # 存储驱动等辅助
+    member/                # 会员档案（C 端会员，与 system_users 登录账号分离）
+      route.go             # 聚合入口（Register → admin.Register + client.Register）
+      admin/               # 管理端：访问「任意会员」，令牌 + 权限点
+        route.go           # 前缀 /api/v1/member
+        controller/        # 参数绑定 + 调 service + 统一响应
+        request/           # 入参结构 + 校验规则 + 中文提示
+      client/              # C 端：访问「会员本人」，只认会员令牌
+        route.go           # 前缀 /api/v1/client/member
+        controller/
+        request/
+      service/             # 业务规则、事务编排（两端共用）
+      repository/          # 数据访问
+      model/               # 表模型
+      errs/                # 模块业务错误码
 bootstrap/
   app.go                   # 应用装配（中间件、Provider、路由）
   migrations.go            # 迁移注册表（★ 必须手动注册）
@@ -102,13 +130,30 @@ ui/src/
 | `request`    | 入参结构、`Rules`、`Messages`            | 访问数据库           |
 | `errs`       | 模块业务错误码                           | 拼接文案             |
 
+**接入层统一按端分目录**：`controller` 与 `request` 放在 `admin/` 或 `client/` 下，
+`service` / `repository` / `model` / `errs` 两端共用；模块根目录的 `route.go` 只做聚合
+（`admin.Register()` / `client.Register()`）。三个模块的现状：
+
+| 模块 | 管理端前缀（`admin/`） | C 端前缀（`client/`） | 当前状态 |
+| --- | --- | --- | --- |
+| `system` | `/api/v1/system` | — | 只有管理端，暂无 `client/` |
+| `infra` | `/api/v1/infra` | `/api/v1/client/infra` | C 端只有文件上传 |
+| `member` | `/api/v1/member` | `/api/v1/client/member` | C 端有认证与会员自助接口 |
+
+- 中间件：管理端 `TokenAuth` + `Permission` + `OperateLog`；C 端只用 `MemberAuth`
+  （`base/middleware.MemberAuth`，已下沉到 base，**不要 import 其他业务模块的中间件**）。
+- 取当前人：管理端 `support.UserID`，C 端 `support.MemberID`。
+- C 端的 `request` **不允许出现 `memberId` 字段**，一律从令牌里取；需要按会员过滤的查询由 service 强制带条件。
+- 只有管理端需要种子菜单与权限点（见 4.7），C 端接口不参与 RBAC，也不写 `system_operate_log`。
+
 ### 4.2 新增一个接口的步骤
 
-1. `request/xxx_request.go`：定义入参 + `Rules()` + `Messages()`（中文提示必须补）。
+1. `request/xxx_request.go`：定义入参 + `Rules()` + `Messages()`（中文提示必须补），放 `admin/request` 或 `client/request`。
 2. `service/xxx_service.go`：写业务方法，错误用 `baseErrs.New(errCode, args...)`。
 3. `repository/xxx_repository.go`：数据访问（如需新查询）。
-4. `controller/xxx_controller.go`：`param.Bind` / `param.PathID`，调 service，`result.Success/Fail/Page`。
-5. `route.go`：在对应 `perm("模块:资源:动作")` 下注册路由。
+4. `controller/xxx_controller.go`：`param.Bind` / `param.PathID`，调 service，`result.Success/Fail/Page`，
+   放 `admin/controller` 或 `client/controller`。
+5. 路由：管理端写 `admin/route.go` 并挂在 `perm("模块:资源:动作")` 下；C 端写 `client/route.go` 并挂在 `MemberAuth` 下。
 6. `errs/infra_error.go`（或 system 的 errs）：新增错误码。
 7. 迁移：新表/新字段/种子数据（见 4.6）。
 8. 菜单与权限点：如新增页面，必须补 seed 迁移（见 4.7）。
@@ -167,7 +212,8 @@ facades.Route().Prefix("/api/v1/infra").Group(func(r route.Router) {
 - 权限点命名：`模块:资源:动作`（`list/create/update/delete`，特殊动作另起，如 `infra:api-log:update`）。
 - 路径参数用 `{id}`，`param.PathID(ctx)` 解析。
 - 更具体的静态路径（如 `/jobs/handlers`）要注册在 `/jobs/{id}` 之前，避免被路径参数吞掉。
-- 上传这类自助接口只挂 `TokenAuth`，不挂具体权限点。
+- 上传属于自助能力：后台 `POST /api/v1/infra/files` 只挂 `TokenAuth`（头像等，不校验权限点），
+  C 端 `POST /api/v1/client/infra/files` 挂 `MemberAuth`；两端都写 `infra_file`。
 
 ### 4.6 迁移（最容易踩坑）
 
@@ -249,12 +295,14 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - 登录流程对齐 yudao：`POST /auth/social/login` 是**快捷登录**——已绑定才签发令牌，
   **未绑定返回业务错误码，不自动注册会员**；新会员先通过手机号等方式登录后，再用
   `POST /auth/social/bind` 绑定。因此 `member_user.mobile` 保持唯一键（`uk_mobile`）。
-- 会员令牌：`app/modules/member/auth` 调用 `baseAuth.IssueScoped("member", ...)`，
-  Redis 键形如 `auth:member:access:<hash>`；`MemberAuth` 与后台 `TokenAuth` 作用域隔离，令牌互不通用。
-- 路由（`/api/v1/member`）：
-  - 公开：`GET /auth/social/{type}/authorize-url`（小程序返回空串，前端 `wx.login` 取 code）、
+- 会员令牌：直接调用 `baseAuth.IssueScoped(baseAuth.ScopeMember, ...)`，**不要再包一层 member/auth**；
+  作用域常量 `ScopeAdmin` / `ScopeMember` 定义在 `base/auth/token.go`，Redis 键形如 `auth:member:access:<hash>`；
+  `MemberAuth` 与后台 `TokenAuth` 作用域隔离，令牌互不通用。
+- 路由分两端，前缀不同：**C 端 `/api/v1/client/member`**（只认会员令牌）、
+  **后台 `/api/v1/member`**（后台令牌 + 权限点），分别见 `member/client/route.go` 与 `member/admin/route.go`：
+  - C 端公开：`GET /auth/social/{type}/authorize-url`（小程序返回空串，前端 `wx.login` 取 code）、
     `POST /auth/social/login`、`POST /auth/refresh`
-  - 会员令牌：`GET /auth/me`、`POST /auth/logout`、`POST /auth/social/bind`、
+  - C 端会员令牌：`GET /auth/me`、`POST /auth/logout`、`POST /auth/social/bind`、
     `GET /auth/social/bindings`、`DELETE /auth/social/bindings/{id}`
   - 后台：`GET /users/{id}/social-bindings`（只读）、`/social-clients` 增删改查（`member:social-client:*`）
 - 解绑保护：至少保留一个绑定，避免会员彻底失去登录方式；登录时会员状态为禁用返回业务错误码。
@@ -262,7 +310,7 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 
 ### 4.10 会员手机号登录
 
-- 接口（`/api/v1/member/auth`，均不需要令牌）：
+- 接口（`/api/v1/client/member/auth`，均不需要令牌）：
   - `POST /auth/sms-code` `{mobile, scene}`：发送验证码，`scene` 默认 `login`
   - `POST /auth/sms-login` `{mobile, code}`：验证码登录，**手机号不存在时自动注册**
     （昵称默认「用户 + 手机号后 4 位」，等级为 0）

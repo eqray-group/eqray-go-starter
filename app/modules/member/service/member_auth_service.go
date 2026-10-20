@@ -16,7 +16,6 @@ import (
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
 	infraService "eqray-go-starter/app/modules/infra/service"
-	memberAuth "eqray-go-starter/app/modules/member/auth"
 	memberErrs "eqray-go-starter/app/modules/member/errs"
 	"eqray-go-starter/app/modules/member/model"
 	"eqray-go-starter/app/modules/member/repository"
@@ -227,7 +226,7 @@ func (s *MemberAuthService) ensureMemberByMobile(ctx context.Context, mobile, ip
 
 // issueLogin 签发令牌、回写登录信息并记登录日志。
 func (s *MemberAuthService) issueLogin(ctx context.Context, member *model.MemberUserModel, ip, userAgent string) (*SocialLoginResult, error) {
-	tokens, err := memberAuth.Issue(member.ID)
+	tokens, err := baseAuth.IssueScoped(baseAuth.ScopeMember, member.ID)
 	if err != nil {
 		s.recordLogin(ctx, member.ID, member.Nickname, baseEnums.LoginResultFail, ip, userAgent)
 		return nil, err

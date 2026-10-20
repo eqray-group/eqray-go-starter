@@ -9,7 +9,6 @@ import (
 	baseErrs "eqray-go-starter/app/modules/base/errs"
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
-	memberAuth "eqray-go-starter/app/modules/member/auth"
 	memberErrs "eqray-go-starter/app/modules/member/errs"
 	"eqray-go-starter/app/modules/member/model"
 	"eqray-go-starter/app/modules/member/repository"
@@ -99,7 +98,7 @@ func (s *MemberSocialService) Login(ctx context.Context, in SocialLoginInput) (*
 		return nil, baseErrs.New(memberErrs.MemberDisabled)
 	}
 
-	tokens, err := memberAuth.Issue(member.ID)
+	tokens, err := baseAuth.IssueScoped(baseAuth.ScopeMember, member.ID)
 	if err != nil {
 		s.recordLogin(ctx, member.ID, member.Nickname, baseEnums.LoginResultFail, in)
 		return nil, err
@@ -254,12 +253,12 @@ func (s *MemberSocialService) Me(ctx context.Context, memberID types.ID) (*model
 
 // Refresh 续期会员令牌。
 func (s *MemberSocialService) Refresh(refreshToken string) (*baseAuth.TokenPair, error) {
-	return memberAuth.Refresh(refreshToken)
+	return baseAuth.RefreshScoped(baseAuth.ScopeMember, refreshToken)
 }
 
 // Logout 注销会员令牌。
 func (s *MemberSocialService) Logout(accessToken, refreshToken string) {
-	memberAuth.Revoke(accessToken, refreshToken)
+	baseAuth.RevokeScoped(baseAuth.ScopeMember, accessToken, refreshToken)
 }
 
 // provider 按渠道从后台配置的 member_social_client 读取凭据并构造渠道实现。

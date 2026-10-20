@@ -24,6 +24,15 @@ const (
 	refreshKind = "refresh"
 )
 
+// 令牌作用域：不同作用域的令牌互不通用（Redis 键会多一层前缀）。
+// 新增接入端时在这里加一个作用域常量即可，不需要再包一层包装包。
+const (
+	// ScopeAdmin 后台管理端作用域。
+	ScopeAdmin = ""
+	// ScopeMember C 端会员作用域。
+	ScopeMember = "member"
+)
+
 // TokenPair 是登录 / 续期后返回给前端的一对令牌，有效期为秒。
 //
 // Access Token 短期有效，随每次请求放在 Authorization 头里；
@@ -40,12 +49,12 @@ type TokenPair struct {
 // 两个令牌都是 32 字节随机串，服务端只在 Redis 保存它的 SHA-256，
 // 这样 Redis 被读走也拿不到可用令牌，同时天然支持「删除即失效」。
 func Issue(userID types.ID) (*TokenPair, error) {
-	return IssueScoped("", userID)
+	return IssueScoped(ScopeAdmin, userID)
 }
 
 // IssueScoped 按作用域签发令牌。
 //
-// scope 为空表示后台账号；会员侧传 "member"，Redis 键会多一层前缀，
+// scope 取 ScopeAdmin（后台账号）或 ScopeMember（C 端会员），Redis 键会多一层前缀，
 // 两套令牌因此互不通用——后台令牌调不了会员接口，反之亦然。
 func IssueScoped(scope string, userID types.ID) (*TokenPair, error) {
 	accessTTL, refreshTTL := ttl()
@@ -78,7 +87,7 @@ func IssueScoped(scope string, userID types.ID) (*TokenPair, error) {
 
 // Resolve 用访问令牌换取用户 ID；令牌不存在或已过期时返回未登录错误。
 func Resolve(accessToken string) (types.ID, error) {
-	return ResolveScoped("", accessToken)
+	return ResolveScoped(ScopeAdmin, accessToken)
 }
 
 // ResolveScoped 按作用域解析访问令牌，scope 语义与 IssueScoped 一致。
@@ -103,7 +112,7 @@ func ResolveScoped(scope, accessToken string) (types.ID, error) {
 // Refresh 用刷新令牌换一对新令牌，并把旧刷新令牌作废（轮换）。
 // 旧的访问令牌按自己的短 TTL 自然过期，不额外维护黑名单。
 func Refresh(refreshToken string) (*TokenPair, error) {
-	return RefreshScoped("", refreshToken)
+	return RefreshScoped(ScopeAdmin, refreshToken)
 }
 
 // RefreshScoped 按作用域续期，换出的新令牌仍属于同一作用域。
@@ -129,7 +138,7 @@ func RefreshScoped(scope, refreshToken string) (*TokenPair, error) {
 
 // Revoke 登出时删除两个令牌，立即失去访问权与续期能力。
 func Revoke(accessToken, refreshToken string) {
-	RevokeScoped("", accessToken, refreshToken)
+	RevokeScoped(ScopeAdmin, accessToken, refreshToken)
 }
 
 // RevokeScoped 按作用域注销令牌。
