@@ -75,7 +75,7 @@
   } from 'element-plus'
   import MenuDialog from './modules/menu-dialog.vue'
 
-  defineOptions({ name: 'Menus' })
+  defineOptions({ name: 'SystemMenu' })
 
   type MenuItem = Api.SystemManage.MenuItem
   type DialogType = 'add' | 'edit'

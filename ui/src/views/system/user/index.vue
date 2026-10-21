@@ -66,7 +66,7 @@
   import defaultAvatar from '@imgs/user/avatar.webp'
   import type { DialogType } from '@/types'
 
-  defineOptions({ name: 'User' })
+  defineOptions({ name: 'SystemUser' })
 
   type UserListItem = Api.SystemManage.UserListItem
 

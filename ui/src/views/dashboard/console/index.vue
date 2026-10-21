@@ -172,7 +172,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { fetchGetDashboardOverview } from '@/api/system/dashboard'
 
-  defineOptions({ name: 'Console' })
+  defineOptions({ name: 'DashboardConsole' })
 
   interface QuickEntry {
     label: string

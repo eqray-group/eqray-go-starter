@@ -60,7 +60,7 @@
   import DictTypeDialog from './modules/dict-type-dialog.vue'
   import DictDataPanel from './modules/dict-data-panel.vue'
 
-  defineOptions({ name: 'Dict' })
+  defineOptions({ name: 'SystemDict' })
 
   type DictTypeItem = Api.SystemManage.DictTypeItem
   type DialogType = 'add' | 'edit'

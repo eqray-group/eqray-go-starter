@@ -35,9 +35,15 @@ type RecentLogin struct {
 	CreatedAt types.DateTime `db:"created_at" json:"createdAt"`
 }
 
+// fileStatsRow 是文件占用空间的聚合结果行。
+type fileStatsRow struct {
+	Size int64 `db:"size" json:"size"`
+}
+
 // DashboardRepository 提供控制台统计查询。
 type DashboardRepository struct{}
 
+// NewDashboardRepository 构造控制台统计仓储；聚合查询无状态，不需要注入依赖。
 func NewDashboardRepository() *DashboardRepository {
 	return &DashboardRepository{}
 }
@@ -89,14 +95,17 @@ func (r *DashboardRepository) FileStats(ctx context.Context) (int64, int64, erro
 		return 0, 0, err
 	}
 
-	var size int64
+	// 空表时 SUM(size) 返回 NULL，直接扫进 int64 会报错，用 COALESCE 兜底成 0。
+	// 聚合结果只有一行，用 First 按结构体扫描。
+	var row fileStatsRow
 	if err := facades.DB().WithContext(ctx).Table(dashboardFileTable).
 		WhereNull("deleted_at").
-		Sum("size", &size); err != nil {
+		Select("COALESCE(SUM(size), 0) AS size").
+		First(&row); err != nil {
 		return 0, 0, err
 	}
 
-	return count, size, nil
+	return count, row.Size, nil
 }
 
 // LoginTrend 按天统计成功登录次数。

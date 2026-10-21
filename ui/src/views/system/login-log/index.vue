@@ -29,7 +29,7 @@
   import { fetchGetLoginLogList } from '@/api/system/login-log'
   import { ElCard, ElTag } from 'element-plus'
 
-  defineOptions({ name: 'LoginLog' })
+  defineOptions({ name: 'SystemLoginLog' })
 
   type LoginLogItem = Api.SystemManage.LoginLogItem
 

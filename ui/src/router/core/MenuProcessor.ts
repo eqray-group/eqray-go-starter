@@ -7,6 +7,7 @@
  * @author Art Design Pro Team
  */
 
+import type { RouteRecordRaw } from 'vue-router'
 import type { AppRouteRecord } from '@/types/router'
 import { useUserStore } from '@/store/modules/user'
 import { useAppMode } from '@/hooks/core/useAppMode'
@@ -132,16 +133,23 @@ export class MenuProcessor {
 
   /**
    * 规范化菜单路径
-   * 将相对路径转换为完整路径，确保菜单跳转正确
+   * 将相对路径转换为完整路径，确保菜单跳转正确；同时给路由名补上父级前缀，
+   * 避免不同模块出现同名路由（如 /system/user 与 /member/user 都叫 User）。
    */
-  private normalizeMenuPaths(menuList: AppRouteRecord[], parentPath = ''): AppRouteRecord[] {
+  private normalizeMenuPaths(
+    menuList: AppRouteRecord[],
+    parentPath = '',
+    parentName = ''
+  ): AppRouteRecord[] {
     return menuList.map((item) => {
-      // 构建完整路径
+      // 构建完整路径与带前缀的路由名
       const fullPath = this.buildFullPath(item.path || '', parentPath)
+      const name = this.buildRouteName(item.name, parentName)
+      const childParentName = typeof name === 'string' ? name : ''
 
       // 递归处理子菜单
       const children = item.children?.length
-        ? this.normalizeMenuPaths(item.children, fullPath)
+        ? this.normalizeMenuPaths(item.children, fullPath, childParentName)
         : item.children
 
       const redirect = item.redirect || this.resolveDefaultRedirect(children)
@@ -149,10 +157,26 @@ export class MenuProcessor {
       return {
         ...item,
         path: fullPath,
+        name,
         redirect,
         children
       }
     })
+  }
+
+  /**
+   * 生成带父级前缀的路由名：`System` + `User` → `SystemUser`
+   * 已经是完整名（以父级名开头）的直接返回，避免重复拼接。
+   */
+  private buildRouteName(
+    name: RouteRecordRaw['name'] | undefined,
+    parentName: string
+  ): RouteRecordRaw['name'] | undefined {
+    if (typeof name !== 'string' || !name || !parentName) {
+      return name
+    }
+
+    return name.startsWith(parentName) ? name : `${parentName}${name}`
   }
 
   /**

@@ -61,7 +61,7 @@
   import RoleEditDialog from './modules/role-edit-dialog.vue'
   import RolePermissionDialog from './modules/role-permission-dialog.vue'
 
-  defineOptions({ name: 'Role' })
+  defineOptions({ name: 'SystemRole' })
 
   type RoleItem = Api.SystemManage.RoleItem
   type DialogType = 'add' | 'edit'

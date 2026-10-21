@@ -176,7 +176,7 @@
   } from '@/api/system/auth'
   import { fetchUploadFile } from '@/api/infra/file'
 
-  defineOptions({ name: 'UserCenter' })
+  defineOptions({ name: 'SystemUserCenter' })
 
   const userStore = useUserStore()
   const userInfo = computed(() => userStore.getUserInfo)

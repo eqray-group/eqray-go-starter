@@ -29,7 +29,7 @@
   import { fetchGetOperateLogList } from '@/api/system/operate-log'
   import { ElCard, ElTag } from 'element-plus'
 
-  defineOptions({ name: 'OperateLog' })
+  defineOptions({ name: 'SystemOperateLog' })
 
   type OperateLogItem = Api.SystemManage.OperateLogItem
 
