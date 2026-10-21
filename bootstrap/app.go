@@ -51,6 +51,7 @@ func Boot() contractsFoundation.Application {
 			routes.Modules()
 		}).
 		WithProviders(Providers).
+		WithSchedule(Schedule).
 		WithConfig(config.Boot).
 		// API 访问 / 错误日志：全局中间件，覆盖所有模块的请求
 		WithMiddleware(func(handler configuration.Middleware) {

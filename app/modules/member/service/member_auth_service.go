@@ -35,6 +35,12 @@ const (
 
 var mobilePattern = regexp.MustCompile(`^1[3-9]\d{9}$`)
 
+// supportedSmsScenes 是允许的短信场景白名单：新增场景时在这里登记，
+// 并在 infra_sms_template 里配一条同名模板，否则发送会因模板缺失失败。
+var supportedSmsScenes = map[string]struct{}{
+	smsSceneLogin: {},
+}
+
 // SmsLoginInput 是手机号 + 验证码登录（注册）入参。
 type SmsLoginInput struct {
 	Mobile    string
@@ -78,8 +84,14 @@ func (s *MemberAuthService) SendSmsCode(ctx context.Context, mobile, scene strin
 	if !mobilePattern.MatchString(mobile) {
 		return baseErrs.New(memberErrs.MemberMobileInvalid)
 	}
+
+	// 场景来自前端，先归一化再参与比较和拼 Redis 键
 	if scene == "" {
 		scene = smsSceneLogin
+	}
+	// 白名单之外的场景直接拒绝，避免拿脏值去查模板、生成对不上的 Redis 键
+	if _, ok := supportedSmsScenes[scene]; !ok {
+		return baseErrs.New(memberErrs.MemberSmsSceneInvalid, scene)
 	}
 
 	// 发送频率限制
@@ -120,10 +132,12 @@ func (s *MemberAuthService) SendSmsCode(ctx context.Context, mobile, scene strin
 	return nil
 }
 
-// templateCode 返回场景对应的短信模板代码：默认取登录模板，其余场景直接用场景标识。
+// templateCode 返回场景对应的短信模板代码：登录用内置登录模板，其余场景直接用场景标识。
+// 模板内容、绑定渠道与启停状态都配置在数据库（infra_sms_template / infra_sms_channel），
+// 这里只负责给出模板代码，不再读配置文件。
 func (s *MemberAuthService) templateCode(scene string) string {
 	if scene == smsSceneLogin {
-		return facades.Config().GetString("sms.login_template_code", smsDefaultTemplateCode)
+		return smsDefaultTemplateCode
 	}
 
 	return scene

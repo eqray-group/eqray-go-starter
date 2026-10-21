@@ -1,6 +1,6 @@
 <!-- 会员详情抽屉：资料 / 积分记录 / 等级记录 / 签到记录 / 收货地址 / 第三方绑定 -->
 <template>
-  <ElDrawer v-model="drawerVisible" title="会员详情" size="620px" :close-on-click-modal="true">
+  <ElDrawer v-model="drawerVisible" title="会员详情" size="880px" :close-on-click-modal="true">
     <div v-loading="loading" class="member-detail">
       <div class="flex-c flex-col pb-4 mb-2 border-b border-g-300/80">
         <ElAvatar :size="72" :src="member?.avatar || defaultAvatar" />
@@ -51,8 +51,8 @@
             :columns="pointColumns"
             :pagination="pointPagination"
             :show-table-header="false"
-            height="300"
-            empty-height="300"
+            height="420"
+            empty-height="420"
             @pagination:current-change="handlePointPageChange"
           />
         </ElTabPane>
@@ -70,8 +70,8 @@
             :columns="levelColumns"
             :pagination="levelPagination"
             :show-table-header="false"
-            height="300"
-            empty-height="300"
+            height="420"
+            empty-height="420"
             @pagination:current-change="handleLevelPageChange"
           />
         </ElTabPane>
@@ -83,8 +83,8 @@
             :columns="signColumns"
             :pagination="signPagination"
             :show-table-header="false"
-            height="300"
-            empty-height="300"
+            height="420"
+            empty-height="420"
             @pagination:current-change="handleSignPageChange"
           />
         </ElTabPane>
@@ -95,8 +95,8 @@
             :data="addresses"
             :columns="addressColumns"
             :show-table-header="false"
-            height="300"
-            empty-height="300"
+            height="420"
+            empty-height="420"
           />
         </ElTabPane>
 
@@ -106,8 +106,8 @@
             :data="socialBindings"
             :columns="socialColumns"
             :show-table-header="false"
-            height="300"
-            empty-height="300"
+            height="420"
+            empty-height="420"
           />
         </ElTabPane>
       </ElTabs>

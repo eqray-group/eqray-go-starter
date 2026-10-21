@@ -24,7 +24,12 @@
 `member_social_user` / `member_social_binding` / `member_social_client`；会员档案、等级、标签、分组、
 积分与等级调整、签到与地址只读、微信第三方登录、手机号验证码登录）。
 
-> 定时任务功能已整体移除（代码、迁移、菜单、数据表），不要再引入，除非明确要求。
+> 定时任务的**后台管理页面**（jobs、任务管理菜单与数据表）已整体移除，不要再引入。
+> 现有调度只有 `bootstrap/schedule.go` 一处：每天 `03:10` 清理 7 天前的 API 访问日志
+> （事件名 `infra:purge-api-access-log`，保留天数见 `config/infra.go` 的
+> `INFRA_API_LOG_RETENTION_DAYS`）。新增定时任务时在 `bootstrap/schedule.go` 里追加
+> `facades.Schedule().Call(...)` 事件即可，由 `bootstrap/app.go` 的 `WithSchedule(Schedule)` 装载，
+> 随 `app.Start()` 的 runner 启动；用 `go run . artisan schedule:list` 可核对注册结果。
 
 ---
 
@@ -542,6 +547,11 @@ views/infra/file-config/
 - 不需要在前端路由文件里手写业务页面。
 - 页面根元素建议 `class="xxx-page art-full-height"`。
 
+**路由名与组件名**：`MenuProcessor` 会把后端路由名按层级加前缀（`System` + `User` → `SystemUser`），
+避免 `/system/user` 与 `/member/user` 同名。页面的 `defineOptions({ name })` **必须与新路由名一致**
+（标签页关闭时靠 `KeepAlive :exclude` 清理缓存，名字对不上会残留缓存），
+例如 `system/user/index.vue` → `SystemUser`、`infra/file-config/index.vue` → `InfraFileConfig`。
+
 ### 6.2 列表页统一范式
 
 必须使用项目封装的组件，不要直接写 `ElTable`（样式会与全站不一致）：
@@ -970,6 +980,20 @@ MySQL 在"新旧值相同"时 `RowsAffected` 为 0，不要直接判定记录不
 
 删除已执行的迁移文件不会撤销数据库变更，需另写清理迁移或手工处理；
 同时要删除 `migrations` 表中的执行记录，保持状态一致。
+
+### 8.10 聚合查询扫到 NULL
+
+`SUM()/AVG()/MAX()` 在空结果集上返回 `NULL`，直接用 `Sum(column, &int64)` 或
+`Scan(&int64)` 会报 `converting NULL to int64 is unsupported`（控制台 `fileSize` 因此报过
+「系统异常」）。统一写法：
+
+```go
+var row fileStatsRow
+err := facades.DB().WithContext(ctx).Table(table).
+    WhereNull("deleted_at").
+    Select("COALESCE(SUM(size), 0) AS size").
+    First(&row) // First 走 GetContext，支持结构体；Get 只接受 slice
+```
 
 ---
 

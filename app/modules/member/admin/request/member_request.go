@@ -24,7 +24,8 @@ type MemberSaveRequest struct {
 	TagIDs  string   `form:"tagIds" json:"tagIds"`
 	Mark    string   `form:"mark" json:"mark"`
 	GroupID types.ID `form:"groupId" json:"groupId"`
-	Status  int8     `form:"status" json:"status"`
+	// Status 会员状态：新增时不传默认启用；编辑时不传表示保持原状态
+	Status *int8 `form:"status" json:"status"`
 }
 
 // Rules 返回校验规则，由 Controller 交给 param.Bind 执行。
@@ -42,7 +43,8 @@ func (r *MemberSaveRequest) Rules(ctx http.Context) map[string]any {
 		"tagIds":     "max:255",
 		"mark":       "max:255",
 		"groupId":    "integer|min:0",
-		"status":     "required|integer|in:0,1",
+		// 不传 status 时跳过校验：新增默认启用，编辑保持原状态
+		"status": "integer|in:0,1",
 	}
 }
 
@@ -68,7 +70,6 @@ func (r *MemberSaveRequest) Messages(ctx http.Context) map[string]string {
 		"mark.max":           "用户标记不能超过 255 个字符",
 		"groupId.integer":    "会员分组取值不合法",
 		"groupId.min":        "会员分组取值不合法",
-		"status.required":    "会员状态不能为空",
 		"status.integer":     "会员状态取值不合法",
 		"status.in":          "会员状态取值不合法",
 	}

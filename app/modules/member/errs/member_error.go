@@ -44,6 +44,8 @@ var (
 	MemberSmsChannelCodeExists  = baseErrs.ErrorCode{Code: 1_003_006_008, Msg: "短信渠道代码【%v】已存在"}
 	MemberSmsTemplateCodeExists = baseErrs.ErrorCode{Code: 1_003_006_009, Msg: "短信模板代码【%v】已存在"}
 	MemberSmsChannelInUse       = baseErrs.ErrorCode{Code: 1_003_006_010, Msg: "渠道【%v】下仍有模板，不可删除"}
+	// MemberSmsSceneInvalid 用于发送验证码时传入了白名单之外的场景标识
+	MemberSmsSceneInvalid = baseErrs.ErrorCode{Code: 1_003_006_011, Msg: "不支持的短信场景【%v】"}
 
 	// address 占用 007 子模块：C 端会员自助维护收货地址
 	MemberAddressNotExists     = baseErrs.ErrorCode{Code: 1_003_007_001, Msg: "收货地址【%v】不存在"}

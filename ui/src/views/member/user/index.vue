@@ -227,7 +227,8 @@
         {
           prop: 'operation',
           label: '操作',
-          width: 220,
+          // 详情 / 编辑 / 删除 三个带图标文字的按钮，220 会把「删除」挤掉
+          width: 280,
           fixed: 'right',
           formatter: (row: MemberItem) =>
             h('div', { class: 'flex items-center' }, [

@@ -132,6 +132,23 @@ func (r *ApiLogRepository) PaginateError(ctx context.Context, filter ApiLogFilte
 	return list, total, nil
 }
 
+// DeleteAccessBefore 删除创建时间早于 before 的访问日志。
+// 参数 before：截止时间，早于它的记录会被物理删除（命中 idx_created_at 索引）。
+// 返回值：受影响的行数与数据库错误。
+func (r *ApiLogRepository) DeleteAccessBefore(ctx context.Context, before types.DateTime) (int64, error) {
+	result, err := facades.DB().WithContext(ctx).Table(apiAccessLogTable).
+		Where("created_at", "<", before).
+		Delete()
+	if err != nil {
+		return 0, err
+	}
+	if result == nil {
+		return 0, nil
+	}
+
+	return result.RowsAffected, nil
+}
+
 // MarkErrorProcessed 把错误日志标记为已处理。
 func (r *ApiLogRepository) MarkErrorProcessed(ctx context.Context, id types.ID) error {
 	_, err := facades.DB().WithContext(ctx).Table(apiErrorLogTable).

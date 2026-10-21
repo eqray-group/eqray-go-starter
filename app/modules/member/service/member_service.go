@@ -38,7 +38,8 @@ type MemberSaveInput struct {
 	TagIDs     string
 	Mark       string
 	GroupID    types.ID
-	Status     int8
+	// Status 为空表示调用方没有传状态：新增按启用处理，编辑保持原状态
+	Status *int8
 }
 
 // MemberListQuery 是会员列表的查询条件。
@@ -105,7 +106,7 @@ func (s *MemberService) EnsureActive(ctx context.Context, id types.ID) (*model.M
 	return m, nil
 }
 
-// Create 新增会员：手机号唯一，等级必须存在且启用。
+// Create 新增会员：手机号唯一，等级必须存在且启用；未传状态时默认启用。
 func (s *MemberService) Create(ctx context.Context, in MemberSaveInput) (types.ID, error) {
 	if err := normalizeMemberInput(&in); err != nil {
 		return 0, err
@@ -136,7 +137,7 @@ func (s *MemberService) Create(ctx context.Context, in MemberSaveInput) (types.I
 		TagIDs:     in.TagIDs,
 		Mark:       in.Mark,
 		GroupID:    in.GroupID,
-		Status:     baseEnums.CommonStatusEnum(in.Status),
+		Status:     memberStatusOrDefault(in.Status),
 	}
 	if err := s.members.Create(ctx, m); err != nil {
 		return 0, err
@@ -184,7 +185,10 @@ func (s *MemberService) Update(ctx context.Context, id types.ID, in MemberSaveIn
 	m.TagIDs = in.TagIDs
 	m.Mark = in.Mark
 	m.GroupID = in.GroupID
-	m.Status = baseEnums.CommonStatusEnum(in.Status)
+	// 未传状态时保留原状态，避免编辑漏传把会员静默改成禁用
+	if in.Status != nil {
+		m.Status = baseEnums.CommonStatusEnum(*in.Status)
+	}
 
 	return s.members.Update(ctx, m)
 }
@@ -348,6 +352,16 @@ func (s *MemberService) ensureLevel(ctx context.Context, levelID types.ID) error
 	return nil
 }
 
+// memberStatusOrDefault 把可选的会员状态转成落库值：调用方没传时默认启用。
+// 参数 status：请求里的状态指针，nil 表示未传；返回值：可直接写入 model 的状态枚举。
+func memberStatusOrDefault(status *int8) baseEnums.CommonStatusEnum {
+	if status == nil {
+		return baseEnums.CommonStatusEnabled
+	}
+
+	return baseEnums.CommonStatusEnum(*status)
+}
+
 // normalizeMemberInput 统一清洗入参并补齐默认值，供新增与编辑复用。
 func normalizeMemberInput(in *MemberSaveInput) error {
 	in.Nickname = strings.TrimSpace(in.Nickname)
@@ -363,7 +377,8 @@ func normalizeMemberInput(in *MemberSaveInput) error {
 	if in.Mobile == "" {
 		return baseErrs.WithMsg(baseErrs.BadRequest, "手机号不能为空")
 	}
-	if !baseEnums.CommonStatusEnum(in.Status).IsValid() {
+	// 状态可以不传，传了才校验取值范围
+	if in.Status != nil && !baseEnums.CommonStatusEnum(*in.Status).IsValid() {
 		return baseErrs.WithMsg(baseErrs.BadRequest, "会员状态取值不合法")
 	}
 	if in.Sex < 0 || in.Sex > 2 {
