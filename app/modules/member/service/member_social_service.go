@@ -60,6 +60,29 @@ func NewMemberSocialService() *MemberSocialService {
 	}
 }
 
+// FindOpenIDByMember 查询会员在某社交渠道的身份标识（openid），供支付模块小程序下单使用。
+// 入参 ctx 为请求上下文、memberID 为会员 ID、socialType 为社交渠道类型；
+// 返回 openid，未绑定返回空串与业务错误码。
+func (s *MemberSocialService) FindOpenIDByMember(ctx context.Context, memberID types.ID, socialType string) (string, error) {
+	binding, err := s.socials.FindBindingByUserType(ctx, memberID, socialType)
+	if err != nil {
+		return "", err
+	}
+	if binding == nil {
+		return "", baseErrs.WithMsg(baseErrs.BadRequest, "请先授权微信登录后再使用微信支付")
+	}
+
+	user, err := s.socials.FindUserByID(ctx, binding.SocialUserID)
+	if err != nil {
+		return "", err
+	}
+	if user == nil || user.OpenID == "" {
+		return "", baseErrs.WithMsg(baseErrs.BadRequest, "微信授权信息缺失，请重新授权微信登录")
+	}
+
+	return user.OpenID, nil
+}
+
 // AuthorizeURL 返回渠道授权地址；小程序无需跳转，返回空串。
 func (s *MemberSocialService) AuthorizeURL(ctx context.Context, socialType, redirectURI, state string) (string, error) {
 	provider, err := s.provider(ctx, socialType)

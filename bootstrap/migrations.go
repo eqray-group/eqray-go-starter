@@ -65,5 +65,16 @@ func Migrations() []schema.Migration {
 		&migrations.M20261020000034CreateMemberSignInConfigTable{},
 		&migrations.M20261020000036SeedMemberSignInConfig{},
 		&migrations.M20261020000037SeedMemberSignConfigMenu{},
+
+		// ---------- pay ----------
+		&migrations.M20261103000001CreatePayChannelTable{},
+		&migrations.M20261103000002CreatePayOrderTable{},
+		&migrations.M20261103000003CreatePayRefundTable{},
+		&migrations.M20261103000004CreatePayNotifyLogTable{},
+		&migrations.M20261103000005CreateDemoOrderTable{},
+		&migrations.M20261103000006SeedPayMenu{},
+		&migrations.M20261104000001SeedAmapConfig{},
+		&migrations.M20261104000002CreateInfraRegionTable{},
+		&migrations.M20261104000003SeedAmapServerKey{},
 	}
 }

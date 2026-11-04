@@ -22,14 +22,23 @@
 `member`（表结构对齐 yudao：`member_user` / `member_level` / `member_point_record` /
 `member_level_record` / `member_sign_record` / `member_tag` / `member_group` / `member_address` /
 `member_social_user` / `member_social_binding` / `member_social_client`；会员档案、等级、标签、分组、
-积分与等级调整、签到与地址只读、微信第三方登录、手机号验证码登录）。
+积分与等级调整、签到与地址只读、微信第三方登录、手机号验证码登录）、
+`pay`（聚合支付：9 种渠道可视化配置、下单、查单、关单、退款、异步回调验签与幂等、支付成功事件；
+配套 `demo` 演示业务模块验证链路，上线可删）。
 
 > 定时任务的**后台管理页面**（jobs、任务管理菜单与数据表）已整体移除，不要再引入。
-> 现有调度只有 `bootstrap/schedule.go` 一处：每天 `03:10` 清理 7 天前的 API 访问日志
-> （事件名 `infra:purge-api-access-log`，保留天数见 `config/infra.go` 的
-> `INFRA_API_LOG_RETENTION_DAYS`）。新增定时任务时在 `bootstrap/schedule.go` 里追加
-> `facades.Schedule().Call(...)` 事件即可，由 `bootstrap/app.go` 的 `WithSchedule(Schedule)` 装载，
-> 随 `app.Start()` 的 runner 启动；用 `go run . artisan schedule:list` 可核对注册结果。
+> 现有调度集中在 `bootstrap/schedule.go` 一处，全部 `OnOneServer()`：
+>
+> | 事件名 | 频率 | 作用 |
+> | --- | --- | --- |
+> | `infra:purge-api-access-log` | 每天 03:10 | 清理 API 访问日志（保留天数见 `config/infra.go` 的 `INFRA_API_LOG_RETENTION_DAYS`） |
+> | `pay:close-expired-orders` | 每 5 分钟 | 关闭超时未支付订单（先关渠道侧再关本地） |
+> | `pay:sync-refunding` | 每 5 分钟 | 微信退款查单收敛（支付宝退款同步返回终态） |
+> | `pay:purge-notify-logs` | 每天 03:40 | 清理 30 天前的支付回调日志 |
+>
+> 新增定时任务时在 `bootstrap/schedule.go` 里追加 `facades.Schedule().Call(...)` 事件即可，
+> 由 `bootstrap/app.go` 的 `WithSchedule(Schedule)` 装载，随 `app.Start()` 的 runner 启动；
+> 用 `go run . artisan schedule:list` 可核对注册结果。
 
 ---
 
@@ -111,11 +120,11 @@ config/                    # 配置文件
 database/migrations/       # 迁移（建表 + 种子数据）
 routes/                    # web / grpc / modules 入口
 ui/src/
-  api/{system,infra}/      # 接口封装，按模块分文件
-  views/{system,infra}/    # 页面，`页面名/index.vue` + `modules/*.vue`
+  api/{system,infra,pay}/  # 接口封装，按模块分文件
+  views/{system,infra,pay}/ # 页面，`页面名/index.vue` + `modules/*.vue`
   hooks/core/              # useTable、useAuth、useTheme 等
   components/core/         # ArtTable、ArtTableHeader、ArtSearchBar、ArtButtonTable 等
-  types/api/api.d.ts       # 全局接口类型（namespace Api）
+  types/api/*.d.ts         # 全局接口类型（namespace Api，按模块拆分：common/auth/system/infra/member/pay/dashboard）
   router/                  # 静态路由 + 后端动态路由装配
   store/modules/           # Pinia
   directives/core/         # v-auth、v-roles 等指令
@@ -286,6 +295,29 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - local 地址：`/storage/{path}`；s3 地址：`driver.Url(path)`（依赖 `url` 前缀与 Bucket 公开读）。
 - 删除物理文件时按 `infra_file.config_id` 找到原配置选择磁盘，配置缺失才回落 local。
 
+**前端公开参数**（供 C 端页面拿第三方 Key，如高德地图）：
+
+- 接口：`GET /api/v1/client/infra/public-configs?keys=map.amap.key,map.amap.securityCode`，**免登录**；
+- 只返回 `service.IsPublicConfigKey` 白名单内的键（当前仅 `map.amap.key` / `map.amap.securityCode`），
+  未配置的键不返回；**新增白名单键要同时改 `app/modules/infra/service/config_service.go` 的 `publicConfigKeys`**；
+- 这些键的值由后台「基础设施 → 参数配置」维护，换 Key 不需要重新发版；
+- 前端封装：`ui/src/utils/map/amap.ts`（按 Key 动态注入 JS API，sessionStorage 缓存）、
+  `ui/src/components/business/amap-picker/index.vue`（地图搜索 + 点选，v-model 回填
+  `Api.Common.MapLocation`：经纬度 + 地址 + 省市区 + `areaId`）；
+- **省市区数据落库，不实时查高德**：表 `infra_region`（`adcode` 唯一，`parent_adcode` 串联，根为 100000），
+  数据由后台「参数配置 → 同步行政区划」（`POST /api/v1/infra/regions/sync`，权限 `infra:config:update`）
+  一次性从高德拉取并**整表重刷**。同步用「高德 Web 服务 Key」（参数 `map.amap.serverKey`，
+  **`visible=0`、不进公开白名单**），与前端 JS API Key 不是同一种类型；
+- C 端查询：`GET /api/v1/client/infra/regions?parentAdcode=330000`，免登录、只读，
+  返回 `{adcode,name,level,leaf}`（`leaf` 由后端按是否有下级算出，直辖市自然是省→区两级）；
+- 前端：`ui/src/utils/map/region.ts` 内存 + localStorage 缓存 30 天（`clearRegionCache()` 强刷），
+  组件 `ui/src/components/business/region-cascader/index.vue`，v-model 为 `Api.Common.RegionValue`
+  （省 / 市 / 区名称 + 三级 adcode + `areaId`），`:show-district="false"` 可只要省市级联；
+- `areaId`（区县 adcode）与 `member_address.area_id` 同源，可直接落库；未同步过数据时接口会
+  返回「行政区划数据未初始化」的提示，而不是静默返回空列表；
+- 高德 Key 必须是「Web 端（JS API）」类型，并把前端域名加入 Key 的域名白名单；
+  2021-12 之后申请的 Key 必须同时填安全密钥，否则地图会报 `INVALID_USER_SCODE`。
+
 ### 4.9 会员第三方登录
 
 - 渠道：`wechat_mini`（小程序）、`wechat_mp`（公众号）、`wechat_open`（开放平台扫码）。
@@ -379,7 +411,48 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - C 端只读接口统一先过 `MemberService.EnsureActive`，禁用会员一律报 `MemberDisabled`。
 - 地址与签到分别占用错误码子模块 `007` / `008`。
 
-### 4.12 注释规范
+### 4.12 支付模块（pay）
+
+设计与实施记录见 [`docs/pay-design.md`](docs/pay-design.md)，这里只列动手前必须知道的约定。
+
+- **路由三端分离**：管理端 `/api/v1/pay`（`TokenAuth` + `Permission` + `OperateLog`）、
+  C 端 `/api/v1/client/pay`（只认 `MemberAuth`）、回调 `/api/v1/pay/notify/{code}`（**免鉴权**、
+  不写 `system_operate_log`、不参与 RBAC）。回调应答必须用渠道要求的格式：
+  微信 `{"code":"SUCCESS","message":"成功"}`、支付宝纯文本 `success`，返回错会触发渠道重试。
+- **渠道适配层** `pay/channel`：统一 `Channel` 接口（下单 / 查单 / 关单 / 退款 / 退款查单 /
+  回调验签 / 应答），微信 V3 与支付宝 V3 各一个实现，基于 `github.com/go-pay/gopay`。
+  新增渠道只改 `channel/schema.go` 的 `Metas`，前端表单由 `GET /channels/schema?code=` 下发，**前端不硬编码字段**。
+- **client 缓存**：`channel.Resolve(code, configJSON)` 用 `sync.Map` 缓存，key = 编码 + config 的 SHA256，
+  配置一改自然换 key，不需要额外的版本号失效逻辑。
+- **密钥存储**：`pay_channel.config` **明文入库**（已评审确认），接口层只回脱敏值（前 4 + `****` + 后 4），
+  编辑时 secret 字段留空表示不修改（`channel.MergeSecretFields`）；**日志与异常里禁止打印 config**。
+- **凭据自检**：`channel.SelfCheck(code, config)` 做离线校验（APIv3 密钥 32 位、私钥可解析、
+  填了 `merchantCertContent` 时校验证书序列号与 `serialNo` 配套），**保存渠道时同步执行**，
+  并由 `pay.Register()` 启动后异步巡检一次（失败仅 `Warning` 日志，不阻断启动）。
+- **回调地址**：不落库、不由用户填写，由 `APP_URL`（`facades.Config().GetString("http.url")`）+
+  `/api/v1/pay/notify/{code}` 生成；`APP_URL` 未配置返回 `1_004_001_004`。
+  **静态路径 `/channels/schema`、`/channels/notify-urls` 必须注册在 `/channels/{id}` 之前**。
+- **模块解耦**：pay 不 import 任何业务模块，两条注册表由启动时注入：
+  - `payService.RegisterBizOrder(bizType, resolver)`：C 端下单时按业务单号反查金额与标题
+    （请求体**不接受金额**），demo 已注册 `demo_order`；
+  - `payService.RegisterOpenIDResolver(socialType, resolver)`：小程序 / JSAPI 取会员 openid，
+    由 `bootstrap/app.go` 注入 `MemberSocialService.FindOpenIDByMember`。
+- **事件**：支付成功后派发 `pay.order.paid`（`pay/events`），退款成功派发 `pay.refund.succeeded`。
+  Goravel 1.18 的 `event.Event` 只要求 `Handle(args []Arg) ([]Arg, error)`，`Signature()` 是 `Listener` 的；
+  事件按**实例**查映射，所以事件键必须是零值结构体（`&OrderPaidEvent{}`），
+  业务载荷序列化成 JSON 经 `event.Arg` 传递，监听器反序列化后处理。监听器必须幂等、不得 panic。
+- **状态机**：支付单 `0 待支付 / 10 支付中 / 20 已支付 / 30 已关闭`，退款单 `0 待退款 / 10 退款中 /
+  20 已退款 / 30 退款失败`；所有流转走 `UpdateStatusCAS(... WhereIn("status", from))`，
+  **只有影响行数 = 1 才派发事件**，重复回调 / 回调与查单并发天然幂等。
+- **回调处理流程**：定位渠道（停用渠道也要处理，避免漏单）→ 验签解密 → 查订单 → 金额比对
+  → CAS 流转 → 派发事件 → 落 `pay_notify_log` → 按渠道格式应答。
+- **退款**：无人工审核，提交后直接调渠道；支付宝同步返回终态，微信返回「受理中」由
+  `pay:sync-refunding` 定时查单收敛，**不开退款回调路由**；退款金额累加不得超订单金额。
+- **演示业务** `app/modules/demo`：`demo_order` 表 + 监听器，演示「业务方自己下单、自己订阅事件」，
+  pay 对它一无所知；上线可整体删除（连同 `demo_order` 表迁移与本文件相关段落）。
+- 错误码占用模块号 `004`：`1_004_001_*` 渠道、`1_004_002_*` 订单、`1_004_003_*` 退款、`1_004_004_*` C 端支付。
+
+### 4.13 注释规范
 
 **每个函数 / 方法都必须写注释**，说清「做什么 + 关键约束 + 入参 + 返回什么」，
 **禁止**写成 `// Index GET /api/v1/system/users` 这种复述路由的形式（零信息量，已全量整改）。
@@ -620,10 +693,13 @@ export function fetchDeleteXxx(id: string) {
 
 ### 6.5 类型定义
 
-全部集中在 `ui/src/types/api/api.d.ts` 的 `namespace Api` 下，按模块分：
+按模块拆到 `ui/src/types/api/` 下的独立文件（`common` / `auth` / `system` / `infra` / `member` /
+`pay` / `dashboard`），全部声明在全局 `namespace Api` 下，TypeScript 会自动合并同名 namespace，
+业务代码无需 import。**类型文件里不要写 import / export**，否则文件变成模块、合并不再生效；
+新增后端模块时新建 `<模块>.d.ts` 并在 `index.d.ts` 的清单里登记。每个文件的写法：
 
 ```ts
-namespace Api {
+declare namespace Api {
   namespace Infra {
     interface XxxItem {
       id: string;

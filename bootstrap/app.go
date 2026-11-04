@@ -10,6 +10,9 @@ import (
 	baseMiddleware "eqray-go-starter/app/modules/base/middleware"
 	"eqray-go-starter/app/modules/base/types"
 	infraMiddleware "eqray-go-starter/app/modules/infra/middleware"
+	memberService "eqray-go-starter/app/modules/member/service"
+	payChannel "eqray-go-starter/app/modules/pay/channel"
+	payService "eqray-go-starter/app/modules/pay/service"
 	systemService "eqray-go-starter/app/modules/system/service"
 	"eqray-go-starter/config"
 	"eqray-go-starter/routes"
@@ -46,12 +49,26 @@ func Boot() contractsFoundation.Application {
 				},
 			)
 
+			// 支付模块的 openid 反查能力归 member，启动时注入，保持 pay 不依赖 member。
+			// 小程序与公众号 openid 不通用，两个社交类型各注册一次。
+			socialService := memberService.NewMemberSocialService()
+			for _, socialType := range []string{
+				payChannel.SocialTypeWechatMini,
+				payChannel.SocialTypeWechatMp,
+			} {
+				payService.RegisterOpenIDResolver(socialType,
+					func(ctx context.Context, userID types.ID) (string, error) {
+						return socialService.FindOpenIDByMember(ctx, userID, socialType)
+					})
+			}
+
 			routes.Web()
 			routes.Grpc()
 			routes.Modules()
 		}).
 		WithProviders(Providers).
 		WithSchedule(Schedule).
+		WithEvents(Events).
 		WithConfig(config.Boot).
 		// API 访问 / 错误日志：全局中间件，覆盖所有模块的请求
 		WithMiddleware(func(handler configuration.Middleware) {

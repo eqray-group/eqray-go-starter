@@ -75,6 +75,24 @@ func (r *MemberSocialRepository) UpdateUser(ctx context.Context, m *model.Member
 	return err
 }
 
+// FindUserByID 按主键查询社交用户；未命中返回 (nil, nil)。
+// 入参 id 为社交用户 ID；返回模型或查询错误。
+func (r *MemberSocialRepository) FindUserByID(ctx context.Context, id types.ID) (*model.MemberSocialUserModel, error) {
+	var m model.MemberSocialUserModel
+
+	if err := facades.DB().WithContext(ctx).Table(model.MemberSocialUserTable).
+		Where("id", id).
+		WhereNull("deleted_at").
+		First(&m); err != nil {
+		return nil, err
+	}
+	if m.ID == 0 {
+		return nil, nil
+	}
+
+	return &m, nil
+}
+
 // FindBindingBySocialUser 按社交用户查绑定关系；未命中返回 (nil, nil)。
 func (r *MemberSocialRepository) FindBindingBySocialUser(ctx context.Context, socialUserID types.ID) (*model.MemberSocialBindingModel, error) {
 	var m model.MemberSocialBindingModel

@@ -177,3 +177,18 @@ func (s *ConfigService) GetInt(ctx context.Context, key string, defaultValue int
 func (s *ConfigService) invalidate(key string) {
 	_ = facades.Cache().Forget(configCachePrefix + key)
 }
+
+// publicConfigKeys 是允许 C 端免登录读取的参数键白名单。
+// 只放「前端必须拿到、泄露也无害」的值（如地图 JS Key），敏感参数一律不放。
+var publicConfigKeys = map[string]struct{}{
+	"map.amap.key":          {},
+	"map.amap.securityCode": {},
+}
+
+// IsPublicConfigKey 判断参数键是否允许通过 /client/infra/public-configs 公开给前端。
+// 入参 key 为参数键；返回是否在白名单内。
+func IsPublicConfigKey(key string) bool {
+	_, ok := publicConfigKeys[strings.TrimSpace(key)]
+
+	return ok
+}

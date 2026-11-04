@@ -1,8 +1,10 @@
 package routes
 
 import (
+	"eqray-go-starter/app/modules/demo"
 	"eqray-go-starter/app/modules/infra"
 	"eqray-go-starter/app/modules/member"
+	"eqray-go-starter/app/modules/pay"
 	"eqray-go-starter/app/modules/system"
 )
 
@@ -11,4 +13,7 @@ func Modules() {
 	system.Register()
 	infra.Register()
 	member.Register()
+	pay.Register()
+	// demo 仅用于支付链路联调，上线可整体删除
+	demo.Register()
 }
