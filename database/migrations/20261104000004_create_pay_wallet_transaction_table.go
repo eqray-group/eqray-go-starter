@@ -4,17 +4,17 @@ import (
 	"eqray-go-starter/app/facades"
 )
 
-// M20261104000005CreatePayWalletTransactionTable 建钱包流水表。
+// M20261104000004CreatePayWalletTransactionTable 建钱包流水表。
 // 只追加不修改：金额带符号（正入账、负出账），并记录变动后的余额便于对账。
-type M20261104000005CreatePayWalletTransactionTable struct{}
+type M20261104000004CreatePayWalletTransactionTable struct{}
 
 // Signature The unique signature for the migration.
-func (r *M20261104000005CreatePayWalletTransactionTable) Signature() string {
-	return "20261104000005_create_pay_wallet_transaction_table"
+func (r *M20261104000004CreatePayWalletTransactionTable) Signature() string {
+	return "20261104000004_create_pay_wallet_transaction_table"
 }
 
 // Up 建 pay_wallet_transaction 表。
-func (r *M20261104000005CreatePayWalletTransactionTable) Up() error {
+func (r *M20261104000004CreatePayWalletTransactionTable) Up() error {
 	if facades.Schema().HasTable("pay_wallet_transaction") {
 		return nil
 	}
@@ -39,6 +39,6 @@ CREATE TABLE pay_wallet_transaction (
 }
 
 // Down 删除钱包流水表。
-func (r *M20261104000005CreatePayWalletTransactionTable) Down() error {
+func (r *M20261104000004CreatePayWalletTransactionTable) Down() error {
 	return facades.Schema().DropIfExists("pay_wallet_transaction")
 }

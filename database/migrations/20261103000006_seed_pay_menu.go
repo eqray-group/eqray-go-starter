@@ -17,8 +17,9 @@ func (r *M20261103000006SeedPayMenu) Signature() string {
 	return "20261103000006_seed_pay_menu"
 }
 
-// Up 新增「支付管理」一级目录与支付渠道 / 支付订单 / 退款订单 / 回调日志四个页面及按钮权限点，
-// 并授权给内置角色；随后前移 RBAC 缓存版本，让管理员立即拿到新权限。
+// Up 新增「支付管理」一级目录与支付渠道 / 支付订单 / 退款订单 / 回调日志 / 钱包 / 支付联调
+// 六个页面及按钮权限点，写入模拟支付开关，并授权给内置角色；
+// 随后前移 RBAC 缓存版本，让管理员立即拿到新权限。
 func (r *M20261103000006SeedPayMenu) Up() error {
 	if !facades.Schema().HasTable("system_menu") {
 		return nil
@@ -68,6 +69,19 @@ func (r *M20261103000006SeedPayMenu) Up() error {
 				{"日志查询", "pay:notify-log:list"},
 			},
 		},
+		{
+			"钱包", "wallet", "/pay/wallet", "ri:wallet-3-line", 5,
+			[][2]string{
+				{"钱包查询", "pay:wallet:list"},
+				{"余额调整", "pay:wallet:adjust"},
+			},
+		},
+		{
+			"支付联调", "test", "/pay/test", "ri:flask-line", 6,
+			[][2]string{
+				{"联调测试", "pay:test:run"},
+			},
+		},
 	}
 
 	for _, page := range pages {
@@ -83,12 +97,68 @@ func (r *M20261103000006SeedPayMenu) Up() error {
 		}
 	}
 
+	if err := r.seedConfigs(now); err != nil {
+		return err
+	}
+
 	if err := r.grantBuiltinRoles(now); err != nil {
 		return err
 	}
 
 	// 新增权限点后前移权限缓存版本，避免管理员要等 30 分钟才能拿到新按钮权限
 	_ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(), 10), 30*time.Minute)
+
+	return nil
+}
+
+// seedConfigs 写入支付模块的内置参数（已存在则跳过，保证幂等）。
+// pay.mock.enabled 默认 0：模拟支付仅联调环境开启，生产必须保持关闭。
+func (r *M20261103000006SeedPayMenu) seedConfigs(now time.Time) error {
+	if !facades.Schema().HasTable("infra_config") {
+		return nil
+	}
+
+	presets := []struct {
+		name    string
+		key     string
+		value   string
+		visible int
+		remark  string
+	}{
+		{
+			"模拟支付开关", "pay.mock.enabled", "0", 1,
+			"1 开启 / 0 关闭；仅联调环境开启，开启后 mock 渠道订单可一键模拟支付成功",
+		},
+	}
+
+	for _, preset := range presets {
+		total, err := facades.DB().Table("infra_config").
+			Where("config_key", preset.key).
+			Count()
+		if err != nil {
+			return err
+		}
+		if total > 0 {
+			continue
+		}
+
+		if _, err := facades.DB().Table("infra_config").Insert(map[string]any{
+			"id":         support.NewID(),
+			"category":   "支付",
+			"name":       preset.name,
+			"config_key": preset.key,
+			"value":      preset.value,
+			"type":       1,
+			"visible":    preset.visible,
+			"remark":     preset.remark,
+			"creator":    "system",
+			"created_at": now,
+			"updater":    "system",
+			"updated_at": now,
+		}); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -194,8 +264,16 @@ func (r *M20261103000006SeedPayMenu) grantBuiltinRoles(now time.Time) error {
 	return nil
 }
 
-// Down 删除「支付管理」目录及全部子菜单、按钮与授权。
+// Down 删除「支付管理」目录及全部子菜单、按钮与授权，并清理支付内置参数。
 func (r *M20261103000006SeedPayMenu) Down() error {
+	if facades.Schema().HasTable("infra_config") {
+		if _, err := facades.DB().Table("infra_config").
+			Where("config_key", "pay.mock.enabled").
+			Delete(); err != nil {
+			return err
+		}
+	}
+
 	if !facades.Schema().HasTable("system_menu") {
 		return nil
 	}

@@ -17,7 +17,7 @@ func (r *M20261020000012SeedInfraOpsMenus) Signature() string {
 	return "20261020000012_seed_infra_ops_menus"
 }
 
-// Up 在「基础设施」下补齐文件配置 / 访问日志 / 错误日志 / 定时任务菜单与权限点。
+// Up 在「基础设施」下补齐省市县 / 文件配置 / 访问日志 / 错误日志菜单与权限点。
 func (r *M20261020000012SeedInfraOpsMenus) Up() error {
 	if !facades.Schema().HasTable("system_menu") {
 		return nil
@@ -38,6 +38,13 @@ func (r *M20261020000012SeedInfraOpsMenus) Up() error {
 		sort      int
 		buttons   [][2]string
 	}{
+		{
+			"省市县", "region", "/infra/region", "ri:map-pin-2-line", 2,
+			[][2]string{
+				{"区划查询", "infra:region:list"},
+				{"同步行政区划", "infra:region:sync"},
+			},
+		},
 		{
 			"文件配置", "file-config", "/infra/file-config", "ri:database-2-line", 3,
 			[][2]string{
