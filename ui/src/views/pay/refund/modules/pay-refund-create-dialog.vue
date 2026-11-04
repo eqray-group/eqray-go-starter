@@ -3,7 +3,7 @@
   <ElDialog
     v-model="dialogVisible"
     title="发起退款"
-    width="560px"
+    width="520px"
     align-center
     :close-on-click-modal="false"
   >
@@ -11,11 +11,15 @@
       type="warning"
       :closable="false"
       show-icon
-      title="退款无人工复核，提交后立即调用微信 / 支付宝退款接口，请确认金额与单号无误。"
-      class="mb-4"
-    />
+      class="refund-alert"
+      title="提交后立即调用渠道退款接口，无人工复核"
+    >
+      <span class="text-xs">
+        请先核对支付单号与退款金额；支持部分退款、可多次提交，累计不超过订单金额。
+      </span>
+    </ElAlert>
 
-    <ElForm ref="formRef" :model="form" :rules="rules" label-width="100px">
+    <ElForm ref="formRef" :model="form" :rules="rules" label-position="top" class="refund-form">
       <ElFormItem label="支付单号" prop="merchantOrderNo">
         <div class="flex w-full items-center gap-2">
           <ElInput
@@ -28,24 +32,30 @@
         </div>
       </ElFormItem>
 
-      <ElFormItem v-if="order" label="订单信息">
-        <div class="text-sm">
-          <div>业务单：{{ order.bizType }} / {{ order.bizOrderNo }}</div>
-          <div>订单金额：{{ formatPrice(order.price) }}</div>
-          <div>
-            订单状态：
-            <ElTag :type="order.status === 20 ? 'success' : 'warning'">
+      <transition name="el-fade-in">
+        <div v-if="order" class="order-panel">
+          <div class="order-row">
+            <span class="order-label">业务单号</span>
+            <span class="order-value">{{ order.bizType }} / {{ order.bizOrderNo }}</span>
+          </div>
+          <div class="order-row">
+            <span class="order-label">订单金额</span>
+            <span class="order-value is-strong">{{ formatPrice(order.price) }}</span>
+          </div>
+          <div class="order-row">
+            <span class="order-label">订单状态</span>
+            <ElTag :type="order.status === 20 ? 'success' : 'warning'" size="small">
               {{ STATUS_LABEL[order.status] || '未知' }}
             </ElTag>
           </div>
         </div>
-      </ElFormItem>
+      </transition>
 
       <ElFormItem label="退款金额" prop="refundYuan">
         <ElInput v-model="form.refundYuan" placeholder="请输入退款金额（元，最多两位小数）">
           <template #append>元</template>
         </ElInput>
-        <div class="mt-1 text-xs text-g-600"> 支持部分退款，累计退款不能超过订单金额 </div>
+        <div class="mt-1 text-xs text-g-600">支持部分退款，累计退款不能超过订单金额</div>
       </ElFormItem>
 
       <ElFormItem label="退款原因" prop="reason">
@@ -204,3 +214,61 @@
     }
   }
 </script>
+
+<style lang="scss" scoped>
+  .refund-alert {
+    margin-bottom: 22px;
+    border-radius: 8px;
+  }
+
+  .refund-form {
+    :deep(.el-form-item) {
+      margin-bottom: 22px;
+    }
+
+    :deep(.el-form-item__label) {
+      padding-bottom: 6px;
+      font-weight: 500;
+      color: var(--el-text-color-regular);
+    }
+  }
+
+  // 订单信息块：替代原来挤在表单行里的三行纯文本
+  .order-panel {
+    margin-bottom: 22px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: var(--el-fill-color-lighter);
+  }
+
+  .order-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+
+    & + & {
+      margin-top: 10px;
+    }
+  }
+
+  .order-label {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+  }
+
+  .order-value {
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.is-strong {
+      font-weight: 600;
+      color: var(--el-color-danger);
+    }
+  }
+</style>
