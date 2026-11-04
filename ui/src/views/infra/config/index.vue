@@ -16,15 +16,6 @@
             <ElButton v-auth="'infra:config:create'" @click="showDialog('add')" v-ripple>
               新增参数
             </ElButton>
-            <ElButton
-              v-auth="'infra:config:update'"
-              :loading="syncing"
-              title="从高德拉取全国省市区并刷新 infra_region 表"
-              @click="handleSyncRegions"
-              v-ripple
-            >
-              同步行政区划
-            </ElButton>
           </ElSpace>
         </template>
       </ArtTableHeader>
@@ -52,8 +43,6 @@
   import { useTable } from '@/hooks/core/useTable'
   import { useAuth } from '@/hooks/core/useAuth'
   import { fetchDeleteConfig, fetchGetConfigList } from '@/api/infra/config'
-  import { fetchSyncInfraRegions } from '@/api/infra/region'
-  import { clearRegionCache } from '@/utils/map/region'
   import { ElButton, ElCard, ElMessage, ElMessageBox, ElSpace, ElTag } from 'element-plus'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ConfigDialog from './modules/config-dialog.vue'
@@ -99,7 +88,6 @@
   const dialogVisible = ref(false)
   const dialogType = ref<DialogType>('add')
   const currentConfig = ref<ConfigItem | null>(null)
-  const syncing = ref(false)
 
   const {
     columns,
@@ -206,31 +194,6 @@
   const handleSearch = (params: Api.Infra.ConfigSearchParams) => {
     Object.assign(searchParams, params)
     getData()
-  }
-
-  // 同步省市区：数据整体重刷 infra_region，完成后清掉前端缓存，级联下次展开即是新数据
-  const handleSyncRegions = async (): Promise<void> => {
-    try {
-      await ElMessageBox.confirm(
-        '将从高德重新拉取全国省、市、区县数据并覆盖 infra_region 表，约 3000+ 条。' +
-          '请确认已在参数配置中填写「高德 Web 服务 Key」（map.amap.serverKey）。',
-        '同步行政区划',
-        { confirmButtonText: '开始同步', cancelButtonText: '取消', type: 'warning' }
-      )
-    } catch {
-      return
-    }
-
-    syncing.value = true
-    try {
-      const res = await fetchSyncInfraRegions()
-      clearRegionCache()
-      ElMessage.success(`同步完成，共 ${res?.count ?? 0} 条`)
-    } catch {
-      // 错误提示已由请求层统一弹出
-    } finally {
-      syncing.value = false
-    }
   }
 
   const showDialog = (type: DialogType, row?: ConfigItem): void => {

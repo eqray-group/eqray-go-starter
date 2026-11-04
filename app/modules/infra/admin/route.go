@@ -60,8 +60,9 @@ func Register() {
 			Put("/configs/{id}", configController.Update)
 		perm("infra:config:delete").Middleware(operate("参数配置", "删除参数")).
 			Delete("/configs/{id}", configController.Destroy)
-		// 省市区数据同步：运营在后台点一次，数据落库后 C 端级联只查库
-		perm("infra:config:update").Middleware(operate("参数配置", "同步行政区划")).
+		// 省市县：列表只读，同步按钮一次性从高德灌数据，之后 C 端级联只查库
+		perm("infra:region:list").Get("/regions", regionController.Index)
+		perm("infra:region:sync").Middleware(operate("基础设施", "同步行政区划")).
 			Post("/regions/sync", regionController.Sync)
 
 		perm("infra:api-log:list").Get("/api-logs/access", apiLogController.Access)

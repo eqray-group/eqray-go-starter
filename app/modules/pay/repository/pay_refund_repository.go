@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 
+	"github.com/goravel/framework/contracts/database/db"
+
 	"eqray-go-starter/app/facades"
 	baseTypes "eqray-go-starter/app/modules/base/types"
 	payModel "eqray-go-starter/app/modules/pay/model"
@@ -20,6 +22,20 @@ type PayRefundFilter struct {
 	OrderID baseTypes.ID
 	// Status 退款状态过滤，nil 表示全部
 	Status *payModel.PayRefundStatus
+}
+
+// UpdateFieldsTx 在事务内按 ID 更新退款单字段，供余额退款与渠道退款共用。
+// 入参 tx 为事务、id 为退款单 ID、data 为列名 → 值、updater 为操作人；返回写库错误。
+func (r *PayRefundRepository) UpdateFieldsTx(ctx context.Context, tx db.Tx, id baseTypes.ID, data map[string]any, updater string) error {
+	if data == nil {
+		data = make(map[string]any)
+	}
+	data["updater"] = updater
+	data["updated_at"] = baseTypes.Now()
+
+	_, err := tx.Table(payRefundTable).Where("id", id).Update(data)
+
+	return err
 }
 
 // PayRefundRepository 是 pay_refund 表的仓储。

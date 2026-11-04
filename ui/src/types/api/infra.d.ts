@@ -285,5 +285,50 @@ declare namespace Api {
       /** 是否叶子节点（没有下级） */
       leaf: boolean
     }
+
+    /** 后台省市县列表行：比 C 端多父级、排序与时间 */
+    interface RegionRowItem {
+      id: string
+      /** 父级 adcode，根为 100000 */
+      parentAdcode: string
+      adcode: string
+      name: string
+      level: string
+      /** 同级排序 */
+      sort: number
+      /** 0 停用 / 1 启用 */
+      status: number
+      createdAt?: string
+      updatedAt?: string
+    }
+
+    /** 省市县查询参数 */
+    interface RegionSearchParams {
+      /** 名称或编码模糊匹配 */
+      keyword?: string
+      /** province / city / district */
+      level?: string
+      /** 父级 adcode */
+      parentAdcode?: string
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 区划总览统计 */
+    interface RegionStats {
+      total: number
+      province: number
+      city: number
+      district: number
+      /** 最后同步时间，未同步过为空串 */
+      lastSyncedAt: string
+    }
+
+    /** 省市县列表返回 */
+    interface RegionListResult {
+      list: RegionRowItem[]
+      total: number
+      stats: RegionStats
+    }
   }
 }

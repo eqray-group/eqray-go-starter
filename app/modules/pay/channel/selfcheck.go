@@ -23,6 +23,9 @@ func SelfCheck(code, configJSON string) error {
 	}
 
 	switch meta.Vendor {
+	case VendorWallet, VendorMock:
+		// 站内渠道没有凭据，无需自检
+		return nil
 	case VendorWechat:
 		var cfg WechatConfig
 		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {

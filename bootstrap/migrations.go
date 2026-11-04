@@ -76,5 +76,12 @@ func Migrations() []schema.Migration {
 		&migrations.M20261104000001SeedAmapConfig{},
 		&migrations.M20261104000002CreateInfraRegionTable{},
 		&migrations.M20261104000003SeedAmapServerKey{},
+		&migrations.M20261104000004CreatePayWalletTable{},
+		&migrations.M20261104000005CreatePayWalletTransactionTable{},
+		&migrations.M20261104000006SeedPayWalletMenu{},
+		&migrations.M20261104000007SeedPayMockConfig{},
+		&migrations.M20261104000008AddPayWalletFrozenBalance{},
+		&migrations.M20261104000009SeedPayTestMenu{},
+		&migrations.M20261104000010SeedInfraRegionMenu{},
 	}
 }

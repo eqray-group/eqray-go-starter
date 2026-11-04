@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"time"
+
+	"github.com/goravel/framework/contracts/database/db"
 
 	"eqray-go-starter/app/facades"
 	baseErrs "eqray-go-starter/app/modules/base/errs"
@@ -117,6 +120,45 @@ func (r *PayOrderRepository) UpdateStatusCAS(ctx context.Context, id baseTypes.I
 	}
 
 	return res.RowsAffected, nil
+}
+
+// UpdatePaidTx 在事务内把订单从待支付 / 支付中流转为已支付，并回写渠道单号与支付时间。
+// 供钱包余额支付使用：扣款与订单流转必须在同一事务，避免扣了钱订单没变。
+// 入参 tx 为事务、id 为订单 ID、channelOrderNo 为渠道单号、paidAt 为支付时间；返回影响行数与写库错误。
+func (r *PayOrderRepository) UpdatePaidTx(ctx context.Context, tx db.Tx, id baseTypes.ID, channelOrderNo, channelUser string, paidAt time.Time) (int64, error) {
+	res, err := tx.Table(payOrderTable).
+		Where("id", id).
+		WhereIn("status", []any{
+			int8(payModel.PayOrderStatusPending),
+			int8(payModel.PayOrderStatusPaying),
+		}).
+		Update(map[string]any{
+			"status":           int8(payModel.PayOrderStatusPaid),
+			"channel_order_no": channelOrderNo,
+			"channel_user":     channelUser,
+			"success_time":     paidAt,
+			"updater":          "system",
+			"updated_at":       paidAt,
+		})
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected, nil
+}
+
+// UpdateRefundStatusTx 在事务内更新订单整体退款进度。
+// 入参 tx 为事务、id 为订单 ID、status 为退款进度；返回写库错误。
+func (r *PayOrderRepository) UpdateRefundStatusTx(ctx context.Context, tx db.Tx, id baseTypes.ID, status payModel.PayOrderRefundStatus) error {
+	_, err := tx.Table(payOrderTable).
+		Where("id", id).
+		Update(map[string]any{
+			"refund_status": int8(status),
+			"updater":       "system",
+			"updated_at":    baseTypes.Now(),
+		})
+
+	return err
 }
 
 // FindByID 按主键查询支付订单；未命中返回 (nil, nil)。

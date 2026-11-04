@@ -10,10 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goravel/framework/contracts/database/db"
+
 	"eqray-go-starter/app/facades"
 	baseErrs "eqray-go-starter/app/modules/base/errs"
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
+	infraService "eqray-go-starter/app/modules/infra/service"
 	payChannel "eqray-go-starter/app/modules/pay/channel"
 	payErrs "eqray-go-starter/app/modules/pay/errs"
 	payEvents "eqray-go-starter/app/modules/pay/events"
@@ -23,6 +26,41 @@ import (
 
 // OrderExpireMinutes 是支付单默认有效期（分钟），超时由定时任务关闭。
 const OrderExpireMinutes = 30
+
+// 支付联调测试单参数：金额固定 1 分，业务类型独立，便于和真实业务单区分。
+const (
+	// TestBizType 联调测试单的业务类型
+	TestBizType = "pay_test"
+	// TestPrice 联调测试单金额（分）
+	TestPrice int64 = 1
+)
+
+// CreateTestOrderInput 是后台支付联调下单的入参。
+type CreateTestOrderInput struct {
+	// UserID 付款会员 ID
+	UserID types.ID
+	// ChannelCode 渠道编码
+	ChannelCode string
+}
+
+// TestOrderOutcome 是批量联调中单个渠道的结果。
+// 某个渠道失败（如钱包余额不足）不影响其他渠道，失败原因放在 Error 里。
+type TestOrderOutcome struct {
+	// ChannelCode 渠道编码
+	ChannelCode string `json:"channelCode"`
+	// OrderID 支付单 ID，失败时为 0
+	OrderID types.ID `json:"id"`
+	// MerchantOrderNo 支付单号，失败时为空
+	MerchantOrderNo string `json:"merchantOrderNo"`
+	// Price 金额（分）
+	Price int64 `json:"price"`
+	// Status 订单状态
+	Status payModel.PayOrderStatus `json:"status"`
+	// PayInfo 前端拉起参数
+	PayInfo payChannel.CreateOrderResult `json:"payInfo"`
+	// Error 失败原因，成功时为空
+	Error string `json:"error"`
+}
 
 // CreateOrderInput 是创建支付订单的入参。
 // 金额 / 标题由业务侧提供（服务间调用）或由反查函数得出（C 端调用），pay 模块不信任前端金额。
@@ -80,14 +118,18 @@ type PayOrderListQuery struct {
 // PayOrderService 负责支付订单的下单、查单、关单与状态机流转。
 type PayOrderService struct {
 	orders   *payRepository.PayOrderRepository
+	wallets  *payRepository.PayWalletRepository
 	channels *PayChannelService
+	configs  *infraService.ConfigService
 }
 
 // NewPayOrderService 构造支付订单服务。
 func NewPayOrderService() *PayOrderService {
 	return &PayOrderService{
 		orders:   payRepository.NewPayOrderRepository(),
+		wallets:  payRepository.NewPayWalletRepository(),
 		channels: NewPayChannelService(),
+		configs:  infraService.NewConfigService(),
 	}
 }
 
@@ -107,9 +149,13 @@ func (s *PayOrderService) CreateOrder(ctx context.Context, in CreateOrderInput) 
 		return nil, err
 	}
 
-	notifyURL, err := s.channels.NotifyURL(in.ChannelCode)
-	if err != nil {
-		return nil, err
+	// 钱包 / 模拟支付是站内渠道，不产生异步通知地址，也不要求配置 APP_URL
+	notifyURL := ""
+	if !payChannel.IsInternal(in.ChannelCode) {
+		notifyURL, err = s.channels.NotifyURL(in.ChannelCode)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// uk_biz_order 幂等：同业务单同渠道复用未支付订单，重试不换单号
@@ -160,6 +206,11 @@ func (s *PayOrderService) CreateOrder(ctx context.Context, in CreateOrderInput) 
 	// 已过期的支付中订单先关闭，避免向渠道重复下单
 	if order.Status == payModel.PayOrderStatusPaying && time.Time(order.ExpireTime).Before(time.Now()) {
 		return nil, baseErrs.New(payErrs.PayOrderStatusDenied, order.Status)
+	}
+
+	// 余额支付：站内扣款并直接完成，不走渠道下单
+	if payChannel.IsWallet(order.ChannelCode) {
+		return s.payByWallet(ctx, order, in.UserID)
 	}
 
 	result, err := ch.CreateOrder(ctx, payChannel.CreateOrderRequest{
@@ -229,6 +280,133 @@ func (s *PayOrderService) CreateOrderForClient(ctx context.Context, bizType, biz
 		OpenID:      openID,
 		ReturnURL:   returnURL,
 	})
+}
+
+// CreateTestOrder 在后台创建一笔 1 分钱的联调测试单并发起支付。
+// 业务类型固定 pay_test，不关联任何业务表；钱包渠道会真实扣会员余额。
+// 入参 in 为会员与渠道；返回支付单与前端拉起参数。
+func (s *PayOrderService) CreateTestOrder(ctx context.Context, in CreateTestOrderInput) (*CreateOrderResult, error) {
+	if in.UserID == 0 {
+		return nil, baseErrs.WithMsg(baseErrs.BadRequest, "请输入付款会员 ID")
+	}
+	if strings.TrimSpace(in.ChannelCode) == "" {
+		return nil, baseErrs.WithMsg(baseErrs.BadRequest, "请选择支付渠道")
+	}
+
+	return s.CreateOrder(ctx, CreateOrderInput{
+		BizType:     TestBizType,
+		BizOrderNo:  "T" + strconv.FormatInt(int64(support.NewID()), 10),
+		ChannelCode: strings.TrimSpace(in.ChannelCode),
+		Subject:     "支付联调测试（1 分）",
+		Price:       TestPrice,
+		UserID:      in.UserID,
+		ClientIP:    "127.0.0.1",
+	})
+}
+
+// CreateTestOrders 批量创建联调测试单：channelCodes 为空时取全部启用渠道。
+// 单个渠道失败不影响其他渠道，失败原因写在对应结果的 Error 字段。
+// 入参 userID 为付款会员、channelCodes 为渠道编码列表；返回每个渠道的结果。
+func (s *PayOrderService) CreateTestOrders(ctx context.Context, userID types.ID, channelCodes []string) ([]TestOrderOutcome, error) {
+	if userID == 0 {
+		return nil, baseErrs.WithMsg(baseErrs.BadRequest, "请输入付款会员 ID")
+	}
+
+	codes := make([]string, 0, len(channelCodes))
+	for _, code := range channelCodes {
+		if code = strings.TrimSpace(code); code != "" {
+			codes = append(codes, code)
+		}
+	}
+
+	// 不指定渠道时覆盖全部启用渠道，便于一键回归
+	if len(codes) == 0 {
+		list, err := s.channels.EnabledChannels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range list {
+			codes = append(codes, m.Code)
+		}
+	}
+	if len(codes) == 0 {
+		return nil, baseErrs.WithMsg(baseErrs.BadRequest, "没有启用中的支付渠道，请先到渠道页启用")
+	}
+
+	outcomes := make([]TestOrderOutcome, 0, len(codes))
+	for _, code := range codes {
+		created, err := s.CreateTestOrder(ctx, CreateTestOrderInput{UserID: userID, ChannelCode: code})
+		if err != nil {
+			outcomes = append(outcomes, TestOrderOutcome{ChannelCode: code, Error: err.Error()})
+			continue
+		}
+
+		outcomes = append(outcomes, TestOrderOutcome{
+			ChannelCode:     code,
+			OrderID:         created.Order.ID,
+			MerchantOrderNo: created.Order.MerchantOrderNo,
+			Price:           created.Order.Price,
+			Status:          created.Order.Status,
+			PayInfo:         created.PayInfo,
+		})
+	}
+
+	return outcomes, nil
+}
+
+// AdminOrder 按支付单号查询订单（后台联调，不校验会员归属）。
+// 入参 merchantOrderNo 为支付单号；返回订单模型，不存在返回业务错误码。
+func (s *PayOrderService) AdminOrder(ctx context.Context, merchantOrderNo string) (*payModel.PayOrderModel, error) {
+	m, err := s.orders.FindByMerchantOrderNo(ctx, merchantOrderNo)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, baseErrs.New(payErrs.PayOrderNotExists, merchantOrderNo)
+	}
+
+	return m, nil
+}
+
+// SyncByMerchantOrderNo 按单号主动向渠道查单并同步（后台联调用，不校验会员归属）。
+// 入参 merchantOrderNo 为支付单号；返回同步后的订单。
+func (s *PayOrderService) SyncByMerchantOrderNo(ctx context.Context, merchantOrderNo string) (*payModel.PayOrderModel, error) {
+	order, err := s.AdminOrder(ctx, merchantOrderNo)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.syncOrder(ctx, order)
+}
+
+// MockPayByMerchantOrderNo 后台对模拟渠道订单执行「模拟支付成功」（联调用，不校验会员归属）。
+// 入参 merchantOrderNo 为支付单号；返回最新订单。
+func (s *PayOrderService) MockPayByMerchantOrderNo(ctx context.Context, merchantOrderNo string) (*payModel.PayOrderModel, error) {
+	if s.configs.GetString(ctx, "pay.mock.enabled", "0") != "1" {
+		return nil, baseErrs.New(payErrs.PayMockDisabled)
+	}
+
+	order, err := s.AdminOrder(ctx, merchantOrderNo)
+	if err != nil {
+		return nil, err
+	}
+	if !payChannel.IsMock(order.ChannelCode) {
+		return nil, baseErrs.New(payErrs.PayMockChannelDenied)
+	}
+	if order.Status == payModel.PayOrderStatusPaid {
+		return order, nil
+	}
+
+	if err := s.markPaid(ctx, order, paidInfo{
+		ChannelOrderNo: "MOCK" + order.MerchantOrderNo,
+		ChannelUser:    "mock",
+		Raw:            `{"mock":true}`,
+		SuccessTime:    time.Now().Format(time.RFC3339),
+	}); err != nil {
+		return nil, err
+	}
+
+	return s.orders.FindByID(ctx, order.ID)
 }
 
 // resolveOpenID 取当前会员在指定社交渠道的 openid（小程序 / 公众号）。
@@ -460,6 +638,135 @@ func (s *PayOrderService) CloseExpired(ctx context.Context) (int, error) {
 	return closed, nil
 }
 
+// payByWallet 余额支付：在事务内扣减余额、写流水并把订单置为已支付。
+// 扣款与订单状态必须同事务，任一步失败整体回滚，避免「扣了钱订单没变」。
+// 入参 order 为本地订单、userID 为付款会员；返回支付单与前端结果（kind=wallet）。
+func (s *PayOrderService) payByWallet(ctx context.Context, order *payModel.PayOrderModel, userID types.ID) (*CreateOrderResult, error) {
+	if userID == 0 {
+		userID = order.UserID
+	}
+	if userID == 0 {
+		return nil, baseErrs.WithMsg(baseErrs.BadRequest, "缺少付款会员信息")
+	}
+
+	paidAt := time.Now()
+	channelOrderNo := "WALLET" + order.MerchantOrderNo
+
+	err := facades.DB().WithContext(ctx).Transaction(func(tx db.Tx) error {
+		wallet, err := s.wallets.FindByUserIDForUpdate(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		if wallet == nil {
+			return baseErrs.New(payErrs.PayWalletNotExists, userID)
+		}
+		if wallet.Status != payModel.PayWalletStatusEnabled {
+			return baseErrs.New(payErrs.PayWalletDisabled)
+		}
+		if wallet.Balance < order.Price {
+			return baseErrs.New(payErrs.PayWalletInsufficient, wallet.Balance)
+		}
+
+		wallet.Balance -= order.Price
+		wallet.TotalExpense += order.Price
+		wallet.Updater = "system"
+		wallet.UpdatedAt = types.DateTime(paidAt)
+		if err := s.wallets.Update(ctx, tx, wallet); err != nil {
+			return err
+		}
+
+		if err := s.wallets.InsertTransaction(ctx, tx, &payModel.PayWalletTransactionModel{
+			ID:           support.NewID(),
+			WalletID:     wallet.ID,
+			UserID:       userID,
+			Type:         payModel.PayWalletTypeConsume,
+			Amount:       -order.Price,
+			BalanceAfter: wallet.Balance,
+			BizType:      order.BizType,
+			BizOrderNo:   order.BizOrderNo,
+			Remark:       "钱包余额支付",
+			Creator:      "system",
+			CreatedAt:    types.DateTime(paidAt),
+		}); err != nil {
+			return err
+		}
+
+		affected, err := s.orders.UpdatePaidTx(ctx, tx, order.ID, channelOrderNo, "", paidAt)
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return baseErrs.New(payErrs.PayOrderStatusDenied, order.Status)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	order.Status = payModel.PayOrderStatusPaid
+	order.ChannelOrderNo = channelOrderNo
+	successTime := types.DateTime(paidAt)
+	order.SuccessTime = &successTime
+
+	s.dispatchPaid(order, paidAt.Format(time.RFC3339))
+
+	return &CreateOrderResult{
+		Order:   order,
+		PayInfo: payChannel.CreateOrderResult{Kind: payChannel.KindWallet},
+	}, nil
+}
+
+// MockPay 对模拟支付渠道的订单执行「模拟支付成功」，仅联调使用。
+// 需要参数配置 pay.mock.enabled=1，且订单必须是当前会员的 mock 渠道订单。
+// 入参 merchantOrderNo 为支付单号、userID 为当前会员；返回最新订单。
+func (s *PayOrderService) MockPay(ctx context.Context, merchantOrderNo string, userID types.ID) (*payModel.PayOrderModel, error) {
+	if s.configs.GetString(ctx, "pay.mock.enabled", "0") != "1" {
+		return nil, baseErrs.New(payErrs.PayMockDisabled)
+	}
+
+	order, err := s.UserOrder(ctx, merchantOrderNo, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !payChannel.IsMock(order.ChannelCode) {
+		return nil, baseErrs.New(payErrs.PayMockChannelDenied)
+	}
+	if order.Status == payModel.PayOrderStatusPaid {
+		return order, nil
+	}
+
+	if err := s.markPaid(ctx, order, paidInfo{
+		ChannelOrderNo: "MOCK" + order.MerchantOrderNo,
+		ChannelUser:    "mock",
+		Raw:            `{"mock":true}`,
+		SuccessTime:    time.Now().Format(time.RFC3339),
+	}); err != nil {
+		return nil, err
+	}
+
+	return s.orders.FindByID(ctx, order.ID)
+}
+
+// dispatchPaid 记录日志并派发支付成功事件（必须在事务提交后调用）。
+// 入参 order 为已支付订单、paidAt 为渠道支付时间（RFC3339）。
+func (s *PayOrderService) dispatchPaid(order *payModel.PayOrderModel, paidAt string) {
+	if paidAt == "" {
+		paidAt = time.Now().Format(time.RFC3339)
+	}
+
+	facades.Log().Infof("支付成功：%s 业务单 %s 金额 %d 分", order.MerchantOrderNo, order.BizOrderNo, order.Price)
+	payEvents.DispatchOrderPaid(&payEvents.OrderPaidPayload{
+		BizType:     order.BizType,
+		BizOrderNo:  order.BizOrderNo,
+		OrderNo:     order.MerchantOrderNo,
+		ChannelCode: order.ChannelCode,
+		Price:       order.Price,
+		PaidAt:      paidAt,
+	})
+}
+
 // markPaid 把订单流转为已支付并派发支付成功事件。
 // 只有 CAS 影响行数为 1（首次流转）才派发事件，重复通知 / 重复查单天然幂等。
 // 入参 order 为本地订单、info 为渠道侧支付信息；返回写库错误。
@@ -486,19 +793,7 @@ func (s *PayOrderService) markPaid(ctx context.Context, order *payModel.PayOrder
 	}
 
 	if affected == 1 {
-		paidAt := info.SuccessTime
-		if paidAt == "" {
-			paidAt = time.Now().Format(time.RFC3339)
-		}
-		facades.Log().Infof("支付成功：%s 业务单 %s 金额 %d 分", order.MerchantOrderNo, order.BizOrderNo, order.Price)
-		payEvents.DispatchOrderPaid(&payEvents.OrderPaidPayload{
-			BizType:     order.BizType,
-			BizOrderNo:  order.BizOrderNo,
-			OrderNo:     order.MerchantOrderNo,
-			ChannelCode: order.ChannelCode,
-			Price:       order.Price,
-			PaidAt:      paidAt,
-		})
+		s.dispatchPaid(order, info.SuccessTime)
 	}
 
 	return nil

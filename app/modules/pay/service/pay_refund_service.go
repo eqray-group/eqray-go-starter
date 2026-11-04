@@ -5,6 +5,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/goravel/framework/contracts/database/db"
+
+	"eqray-go-starter/app/facades"
 	baseErrs "eqray-go-starter/app/modules/base/errs"
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
@@ -42,6 +45,7 @@ type PayRefundListQuery struct {
 type PayRefundService struct {
 	refunds  *payRepository.PayRefundRepository
 	orders   *payRepository.PayOrderRepository
+	wallets  *payRepository.PayWalletRepository
 	channels *PayChannelService
 }
 
@@ -50,6 +54,7 @@ func NewPayRefundService() *PayRefundService {
 	return &PayRefundService{
 		refunds:  payRepository.NewPayRefundRepository(),
 		orders:   payRepository.NewPayOrderRepository(),
+		wallets:  payRepository.NewPayWalletRepository(),
 		channels: NewPayChannelService(),
 	}
 }
@@ -79,6 +84,11 @@ func (s *PayRefundService) Create(ctx context.Context, in RefundCreateInput) (ty
 	}
 	if refunded+in.RefundPrice > order.Price {
 		return 0, baseErrs.New(payErrs.PayRefundPriceInvalid)
+	}
+
+	// 余额支付退款：直接退回钱包，不经过第三方渠道
+	if payChannel.IsWallet(order.ChannelCode) {
+		return s.refundToWallet(ctx, order, in, refunded)
 	}
 
 	_, ch, err := s.channels.Resolve(ctx, order.ChannelCode, false)
@@ -186,6 +196,94 @@ func (s *PayRefundService) SyncRefunding(ctx context.Context) (int, error) {
 	}
 
 	return settled, nil
+}
+
+// refundToWallet 余额支付退款：事务内退回余额、写流水并置退款单成功。
+// 入参 order 为原支付订单、in 为退款入参、refunded 为本次之前已退金额（分）；返回退款单 ID。
+func (s *PayRefundService) refundToWallet(ctx context.Context, order *payModel.PayOrderModel, in RefundCreateInput, refunded int64) (types.ID, error) {
+	now := time.Now()
+	refund := &payModel.PayRefundModel{
+		MerchantRefundNo: strconv.FormatInt(int64(support.NewID()), 10),
+		OrderID:          order.ID,
+		MerchantOrderNo:  order.MerchantOrderNo,
+		ChannelID:        order.ChannelID,
+		ChannelCode:      order.ChannelCode,
+		RefundPrice:      in.RefundPrice,
+		Reason:           in.Reason,
+		Status:           payModel.PayRefundStatusPending,
+	}
+	if err := s.refunds.Insert(ctx, refund); err != nil {
+		return 0, err
+	}
+
+	err := facades.DB().WithContext(ctx).Transaction(func(tx db.Tx) error {
+		wallet, err := s.wallets.FindByUserIDForUpdate(ctx, tx, order.UserID)
+		if err != nil {
+			return err
+		}
+		if wallet == nil {
+			return baseErrs.New(payErrs.PayWalletNotExists, order.UserID)
+		}
+
+		wallet.Balance += in.RefundPrice
+		if wallet.TotalExpense >= in.RefundPrice {
+			wallet.TotalExpense -= in.RefundPrice
+		} else {
+			wallet.TotalExpense = 0
+		}
+		wallet.Updater = "system"
+		wallet.UpdatedAt = types.DateTime(now)
+		if err := s.wallets.Update(ctx, tx, wallet); err != nil {
+			return err
+		}
+
+		if err := s.wallets.InsertTransaction(ctx, tx, &payModel.PayWalletTransactionModel{
+			ID:           support.NewID(),
+			WalletID:     wallet.ID,
+			UserID:       order.UserID,
+			Type:         payModel.PayWalletTypeRefund,
+			Amount:       in.RefundPrice,
+			BalanceAfter: wallet.Balance,
+			BizType:      order.BizType,
+			BizOrderNo:   order.BizOrderNo,
+			Remark:       "退款回钱包（" + order.MerchantOrderNo + "）",
+			Creator:      "system",
+			CreatedAt:    types.DateTime(now),
+		}); err != nil {
+			return err
+		}
+
+		if err := s.refunds.UpdateFieldsTx(ctx, tx, refund.ID, map[string]any{
+			"status":            int8(payModel.PayRefundStatusSuccess),
+			"channel_refund_no": "WALLET" + refund.MerchantRefundNo,
+			"success_time":      now,
+		}, "system"); err != nil {
+			return err
+		}
+
+		refundStatus := payModel.PayOrderRefundStatusPartial
+		if refunded+in.RefundPrice >= order.Price {
+			refundStatus = payModel.PayOrderRefundStatusAll
+		}
+
+		return s.orders.UpdateRefundStatusTx(ctx, tx, order.ID, refundStatus)
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	payEvents.DispatchRefundSucceeded(&payEvents.RefundSucceededPayload{
+		BizType:     order.BizType,
+		BizOrderNo:  order.BizOrderNo,
+		OrderNo:     order.MerchantOrderNo,
+		RefundNo:    refund.MerchantRefundNo,
+		ChannelCode: refund.ChannelCode,
+		RefundPrice: refund.RefundPrice,
+		Reason:      refund.Reason,
+		SucceededAt: now.Format(time.RFC3339),
+	})
+
+	return refund.ID, nil
 }
 
 // settleRefund 按渠道退款结果收敛退款单状态并回写订单退款进度。

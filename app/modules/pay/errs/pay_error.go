@@ -30,4 +30,15 @@ var (
 	// ---------- C 端支付 ----------
 	PayMemberOpenidMissing = baseErrs.ErrorCode{Code: 1_004_004_001, Msg: "请先授权微信登录后再使用微信支付"}
 	PayReturnUrlInvalid    = baseErrs.ErrorCode{Code: 1_004_004_002, Msg: "支付完成跳转地址必须与本站同域"}
+
+	// ---------- 钱包 ----------
+	PayWalletNotExists     = baseErrs.ErrorCode{Code: 1_004_005_001, Msg: "钱包账户【%v】不存在"}
+	PayWalletInsufficient  = baseErrs.ErrorCode{Code: 1_004_005_002, Msg: "钱包余额不足，当前可用余额 %v 分"}
+	PayWalletAmountInvalid = baseErrs.ErrorCode{Code: 1_004_005_003, Msg: "调整金额不能为 0"}
+	PayWalletDisabled      = baseErrs.ErrorCode{Code: 1_004_005_004, Msg: "钱包已被冻结，暂不可用"}
+	PayWalletFrozenExceed  = baseErrs.ErrorCode{Code: 1_004_005_005, Msg: "解冻金额不能超过冻结金额（当前冻结 %v 分）"}
+
+	// ---------- 模拟支付 ----------
+	PayMockDisabled      = baseErrs.ErrorCode{Code: 1_004_006_001, Msg: "模拟支付未开启，请先在参数配置把 pay.mock.enabled 置为 1"}
+	PayMockChannelDenied = baseErrs.ErrorCode{Code: 1_004_006_002, Msg: "该订单不是模拟支付渠道，不能模拟支付"}
 )

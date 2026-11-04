@@ -226,6 +226,8 @@ facades.Route().Prefix("/api/v1/infra").Group(func(r route.Router) {
 
 - 权限点命名：`模块:资源:动作`（`list/create/update/delete`，特殊动作另起，如 `infra:api-log:update`）。
 - 路径参数用 `{id}`，`param.PathID(ctx)` 解析。
+- **请求体里的雪花 ID 一律用 `types.ID`，不要用 `int64`**：前端按字符串传（避免 JS 丢精度），
+  `types.ID` 实现了兼容字符串 / 数字的 `UnmarshalJSON`；写成 `int64` 会直接报「参数解析失败」。
 - 更具体的静态路径（如 `/jobs/handlers`）要注册在 `/jobs/{id}` 之前，避免被路径参数吞掉。
 - 上传属于自助能力：后台 `POST /api/v1/infra/files` 只挂 `TokenAuth`（头像等，不校验权限点），
   C 端 `POST /api/v1/client/infra/files` 挂 `MemberAuth`；两端都写 `infra_file`。
@@ -305,9 +307,13 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
   `ui/src/components/business/amap-picker/index.vue`（地图搜索 + 点选，v-model 回填
   `Api.Common.MapLocation`：经纬度 + 地址 + 省市区 + `areaId`）；
 - **省市区数据落库，不实时查高德**：表 `infra_region`（`adcode` 唯一，`parent_adcode` 串联，根为 100000），
-  数据由后台「参数配置 → 同步行政区划」（`POST /api/v1/infra/regions/sync`，权限 `infra:config:update`）
-  一次性从高德拉取并**整表重刷**。同步用「高德 Web 服务 Key」（参数 `map.amap.serverKey`，
-  **`visible=0`、不进公开白名单**），与前端 JS API Key 不是同一种类型；
+  数据由后台「基础设施 → 省市县」（`/infra/region`）页面的「同步行政区划」一次性从高德拉取并**整表重刷**；
+  该页 = 只读列表 + 同步入口：
+  - `GET /api/v1/infra/regions`（`infra:region:list`）：分页 + `keyword`（名称/编码）、`level`、`parentAdcode` 筛选，
+    返回 `{ list, total, stats }`，`stats` 含各层级条数与最后同步时间（`MAX(updated_at)`）；
+  - `POST /api/v1/infra/regions/sync`（`infra:region:sync`）：整表重刷，写操作留痕；
+  - 同步用「高德 Web 服务 Key」（参数 `map.amap.serverKey`，**`visible=0`、不进公开白名单**），
+    与前端 JS API Key 不是同一种类型；
 - C 端查询：`GET /api/v1/client/infra/regions?parentAdcode=330000`，免登录、只读，
   返回 `{adcode,name,level,leaf}`（`leaf` 由后端按是否有下级算出，直辖市自然是省→区两级）；
 - 前端：`ui/src/utils/map/region.ts` 内存 + localStorage 缓存 30 天（`clearRegionCache()` 强刷），
@@ -422,6 +428,20 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - **渠道适配层** `pay/channel`：统一 `Channel` 接口（下单 / 查单 / 关单 / 退款 / 退款查单 /
   回调验签 / 应答），微信 V3 与支付宝 V3 各一个实现，基于 `github.com/go-pay/gopay`。
   新增渠道只改 `channel/schema.go` 的 `Metas`，前端表单由 `GET /channels/schema?code=` 下发，**前端不硬编码字段**。
+- **钱包（余额支付）**：`wallet` 渠道，账户表 `pay_wallet`（一会员一行，余额单位分）、
+  流水表 `pay_wallet_transaction`（只追加，金额带符号 + 变动后余额）。
+  - 支付：`PayOrderService.payByWallet` 在**同一事务**内扣余额、写流水、CAS 置订单已支付，
+    任一步失败整体回滚；下单前需后台新建并启用 `wallet` 渠道（无凭据字段）。
+  - 退款：`PayRefundService.refundToWallet` 事务内退回余额并置退款单成功，不经过第三方。
+  - 后台调账：`POST /api/v1/pay/wallets/adjust`（`pay:wallet:adjust`），金额正数充值、负数扣减，
+    不能把余额扣成负数；C 端余额 / 流水：`GET /api/v1/client/pay/wallet`、`/wallet/records`。
+  - **冻结**：`pay_wallet.balance` 是**可用余额**，`frozen_balance` 是冻结金额，
+    总资产 = 两者之和；支付、扣减、冻结都只动 `balance`，冻结中的钱不可消费。
+    冻结 / 解冻：`POST /pay/wallets/freeze`、`/wallets/unfreeze`（同样 `pay:wallet:adjust`），
+    冻结金额不得超可用余额，解冻不得超冻结金额；流水类型 5 冻结 / 6 解冻。
+- **模拟支付**：`mock` 渠道，下单返回 `kind=mock`，C 端调
+  `POST /api/v1/client/pay/orders/{merchantOrderNo}/mock-pay` 直接把订单置为已支付（走正常查单状态机）。
+  需要参数配置 `pay.mock.enabled=1` 才可用，**生产环境保持 0**；该渠道同样需要在后台新建并启用。
 - **client 缓存**：`channel.Resolve(code, configJSON)` 用 `sync.Map` 缓存，key = 编码 + config 的 SHA256，
   配置一改自然换 key，不需要额外的版本号失效逻辑。
 - **密钥存储**：`pay_channel.config` **明文入库**（已评审确认），接口层只回脱敏值（前 4 + `****` + 后 4），
@@ -448,6 +468,14 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
   → CAS 流转 → 派发事件 → 落 `pay_notify_log` → 按渠道格式应答。
 - **退款**：无人工审核，提交后直接调渠道；支付宝同步返回终态，微信返回「受理中」由
   `pay:sync-refunding` 定时查单收敛，**不开退款回调路由**；退款金额累加不得超订单金额。
+- **支付联调页**：后台「支付管理 → 支付联调」（`/pay/test`，权限 `pay:test:run`），
+  输入会员 ID + 渠道即可建 **1 分钱**测试单（`biz_type = pay_test`，不与业务表关联），
+  页面按 `payInfo.kind` 渲染二维码 / 跳转链接 / JSAPI 参数，并提供「刷新」「查单」
+  与 mock 渠道的「模拟支付」。接口：`POST /pay/test-orders`、`POST /pay/test-orders/batch`
+  （不传 `channelCodes` 即全部启用渠道，单渠道失败只体现在该行 `error`）、
+  `GET /pay/test-orders/{no}`、`POST /pay/test-orders/{no}/sync`、`POST /pay/test-orders/{no}/mock-pay`。
+  钱包渠道会真实扣 1 分，测完可在退款页原路退回。
+  会员选择弹窗直接调后台会员列表接口（`member:user:list`），pay 后端不依赖 member 模块。
 - **演示业务** `app/modules/demo`：`demo_order` 表 + 监听器，演示「业务方自己下单、自己订阅事件」，
   pay 对它一无所知；上线可整体删除（连同 `demo_order` 表迁移与本文件相关段落）。
 - 错误码占用模块号 `004`：`1_004_001_*` 渠道、`1_004_002_*` 订单、`1_004_003_*` 退款、`1_004_004_*` C 端支付。

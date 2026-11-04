@@ -18,6 +18,8 @@ func Register() {
 	orderController := controller.NewPayOrderController()
 	refundController := controller.NewPayRefundController()
 	notifyLogController := controller.NewPayNotifyLogController()
+	walletController := controller.NewPayWalletController()
+	testController := controller.NewPayTestController()
 
 	facades.Route().Prefix(Prefix).Group(func(r route.Router) {
 		auth := r.Middleware(&baseMiddleware.TokenAuth{})
@@ -53,6 +55,26 @@ func Register() {
 			Post("/orders/{id}/sync", orderController.Sync)
 		perm("pay:order:update").Middleware(operate("支付管理", "关闭订单")).
 			Post("/orders/{id}/close", orderController.Close)
+
+		// 钱包：账户列表 / 流水 / 调账
+		perm("pay:wallet:list").Get("/wallets", walletController.Index)
+		perm("pay:wallet:list").Get("/wallets/records", walletController.Records)
+		perm("pay:wallet:adjust").Middleware(operate("支付管理", "钱包调账")).
+			Post("/wallets/adjust", walletController.Adjust)
+		perm("pay:wallet:adjust").Middleware(operate("支付管理", "冻结资金")).
+			Post("/wallets/freeze", walletController.Freeze)
+		perm("pay:wallet:adjust").Middleware(operate("支付管理", "解冻资金")).
+			Post("/wallets/unfreeze", walletController.Unfreeze)
+
+		// 支付联调：建 1 分钱测试单、查状态、主动查单、模拟支付
+		perm("pay:test:run").Middleware(operate("支付管理", "联调下单")).
+			Post("/test-orders", testController.Store)
+		perm("pay:test:run").Middleware(operate("支付管理", "批量联调")).
+			Post("/test-orders/batch", testController.Batch)
+		perm("pay:test:run").Get("/test-orders/{merchantOrderNo}", testController.Show)
+		perm("pay:test:run").Post("/test-orders/{merchantOrderNo}/sync", testController.Sync)
+		perm("pay:test:run").Middleware(operate("支付管理", "模拟支付")).
+			Post("/test-orders/{merchantOrderNo}/mock-pay", testController.MockPay)
 
 		// 退款
 		perm("pay:refund:list").Get("/refunds", refundController.Index)

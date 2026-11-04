@@ -89,8 +89,13 @@ func (s *PayChannelService) Schema(code string) (payChannel.Meta, error) {
 }
 
 // NotifyURL 返回系统生成的异步通知地址：APP_URL + 固定路由 + 渠道编码。
+// 站内渠道（钱包 / 模拟支付）没有异步通知，直接返回空串。
 // 入参 code 为渠道编码；返回完整地址，APP_URL 未配置返回业务错误码。
 func (s *PayChannelService) NotifyURL(code string) (string, error) {
+	if payChannel.IsInternal(code) {
+		return "", nil
+	}
+
 	appURL := strings.TrimRight(strings.TrimSpace(facades.Config().GetString("http.url")), "/")
 	if appURL == "" || appURL == "http://localhost" {
 		return "", baseErrs.New(payErrs.PayAppUrlNotConfigured)

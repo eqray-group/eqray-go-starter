@@ -15,6 +15,8 @@
           <ElRadioButton value="">全部（{{ data.length }}）</ElRadioButton>
           <ElRadioButton value="wx">微信支付</ElRadioButton>
           <ElRadioButton value="alipay">支付宝</ElRadioButton>
+          <ElRadioButton value="wallet">钱包</ElRadioButton>
+          <ElRadioButton value="mock">模拟</ElRadioButton>
         </ElRadioGroup>
 
         <ElSpace>
@@ -48,10 +50,8 @@
             :class="{ 'is-off': channel.status !== 1 }"
           >
             <div class="channel-card__head">
-              <div class="channel-logo" :class="channel.channel === 'wx' ? 'is-wx' : 'is-alipay'">
-                <ArtSvgIcon
-                  :icon="channel.channel === 'wx' ? 'ri:wechat-pay-line' : 'ri:alipay-line'"
-                />
+              <div class="channel-logo" :class="logoClass(channel)">
+                <ArtSvgIcon :icon="logoIcon(channel)" />
               </div>
               <div class="channel-title">
                 <p class="channel-name" :title="channel.name">{{ channel.name }}</p>
@@ -163,7 +163,9 @@
     ali_pc: '支付宝电脑网站',
     ali_wap: '支付宝手机网站',
     ali_app: '支付宝 APP',
-    ali_qr: '支付宝当面付'
+    ali_qr: '支付宝当面付',
+    wallet: '钱包余额',
+    mock: '模拟支付'
   }
 
   // 支付方式展示文案
@@ -175,7 +177,37 @@
     app: 'APP',
     page: '电脑网站',
     wap: '手机网站',
-    qr: '扫码'
+    qr: '扫码',
+    wallet: '钱包',
+    mock: '模拟'
+  }
+
+  // 卡片图标样式：按厂商给不同渐变底色
+  const logoClass = (channel: ChannelItem): string => {
+    switch (channel.channel) {
+      case 'wx':
+        return 'is-wx'
+      case 'alipay':
+        return 'is-alipay'
+      case 'wallet':
+        return 'is-wallet'
+      default:
+        return 'is-mock'
+    }
+  }
+
+  // 卡片图标：钱包与模拟渠道用各自语义的图标
+  const logoIcon = (channel: ChannelItem): string => {
+    switch (channel.channel) {
+      case 'wx':
+        return 'ri:wechat-pay-line'
+      case 'alipay':
+        return 'ri:alipay-line'
+      case 'wallet':
+        return 'ri:wallet-3-line'
+      default:
+        return 'ri:flask-line'
+    }
   }
 
   const searchForm = ref<Api.Pay.ChannelSearchParams>({
@@ -389,6 +421,14 @@
 
     &.is-alipay {
       background: linear-gradient(135deg, #4a9bff, #1677ff);
+    }
+
+    &.is-wallet {
+      background: linear-gradient(135deg, #ffb44d, #fa8c16);
+    }
+
+    &.is-mock {
+      background: linear-gradient(135deg, #9e9e9e, #616161);
     }
   }
 

@@ -3,85 +3,126 @@
   <ElDialog
     v-model="dialogVisible"
     :title="isEdit ? '编辑支付渠道' : '新增支付渠道'"
-    width="680px"
+    :width="dialogWidth"
     align-center
+    class="channel-dialog"
     :close-on-click-modal="false"
   >
-    <ElForm ref="formRef" :model="form" :rules="rules" label-width="130px">
-      <ElFormItem label="渠道编码" prop="code">
-        <ElSelect
-          v-model="form.code"
-          :disabled="isEdit"
-          placeholder="请选择支付渠道"
-          class="w-full"
-          @change="handleCodeChange"
-        >
-          <ElOption
-            v-for="item in codeOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </ElSelect>
-        <div class="mt-1 text-xs text-g-600">
-          一个渠道编码对应一种支付方式；同一商户号要同时支持扫码与 H5，请建两条记录
+    <ElAlert
+      v-if="isInternal"
+      type="info"
+      :closable="false"
+      show-icon
+      class="internal-alert"
+      :title="
+        isWallet
+          ? '站内余额支付，无需商户凭据与异步通知地址'
+          : '联调用模拟支付，无需商户凭据与异步通知地址'
+      "
+    >
+      <span class="text-xs">
+        {{
+          isWallet
+            ? '扣减下单会员的钱包余额，退款原路退回钱包；请先在「钱包」页给会员调账充值。'
+            : '下单后由 C 端调用「模拟支付」接口直接置为已支付；需在参数配置把 pay.mock.enabled 置为 1，生产环境保持 0。'
+        }}
+      </span>
+    </ElAlert>
+
+    <ElForm ref="formRef" :model="form" :rules="rules" label-position="top" class="channel-form">
+      <div class="form-layout">
+        <!-- 左列：基础信息 -->
+        <div class="form-pane">
+          <div class="pane-title">基础信息</div>
+
+          <ElFormItem label="渠道编码" prop="code">
+            <ElSelect
+              v-model="form.code"
+              :disabled="isEdit"
+              placeholder="请选择支付渠道"
+              class="w-full"
+              @change="handleCodeChange"
+            >
+              <ElOption
+                v-for="item in codeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </ElSelect>
+            <div v-if="!isInternal" class="mt-1 text-xs text-g-600">
+              一个渠道编码对应一种支付方式；扫码与 H5 请建两条记录
+            </div>
+          </ElFormItem>
+
+          <ElFormItem v-if="notifyUrl" label="异步通知地址（自动生成）">
+            <div class="flex w-full items-center gap-2">
+              <ElInput :model-value="notifyUrl" readonly size="small" />
+              <ElButton v-ripple @click="handleCopyNotifyUrl">复制</ElButton>
+            </div>
+          </ElFormItem>
+
+          <ElFormItem label="渠道名称" prop="name">
+            <ElInput
+              v-model="form.name"
+              placeholder="选择渠道编码后自动填充，可按需修改"
+              maxlength="64"
+            />
+          </ElFormItem>
+
+          <div class="form-row-2">
+            <ElFormItem label="状态" prop="status">
+              <ElSwitch v-model="form.status" :active-value="1" :inactive-value="0" />
+              <span class="ml-2 text-xs text-g-600">停用后不可选</span>
+            </ElFormItem>
+
+            <ElFormItem label="排序" prop="sort">
+              <ElInputNumber v-model="form.sort" :min="0" :max="9999" controls-position="right" />
+            </ElFormItem>
+          </div>
+
+          <ElFormItem label="备注" prop="remark">
+            <ElInput v-model="form.remark" type="textarea" :rows="2" maxlength="255" />
+          </ElFormItem>
         </div>
-      </ElFormItem>
 
-      <ElFormItem v-if="notifyUrl" label="异步通知地址">
-        <div class="flex w-full items-center gap-2">
-          <ElInput :model-value="notifyUrl" readonly />
-          <ElButton v-ripple @click="handleCopyNotifyUrl">复制</ElButton>
+        <!-- 右列：商户凭据（由后端下发的字段定义动态渲染） -->
+        <div v-if="fields.length" class="form-pane is-cred">
+          <div class="pane-title">
+            商户凭据
+            <span class="ml-1 text-xs font-normal text-g-600"
+              >必填 {{ requiredFieldCount }} 项</span
+            >
+          </div>
+
+          <template v-for="field in fields" :key="field.key">
+            <ElFormItem :label="field.label">
+              <ElSwitch
+                v-if="field.type === 'switch'"
+                v-model="configValues[field.key]"
+                :active-value="true"
+                :inactive-value="false"
+              />
+              <ElInput
+                v-else-if="field.type === 'textarea'"
+                v-model="configValues[field.key]"
+                type="textarea"
+                :autosize="{ minRows: 3, maxRows: 6 }"
+                :placeholder="fieldPlaceholder(field)"
+              />
+              <ElInput
+                v-else
+                v-model="configValues[field.key]"
+                :type="field.type === 'password' ? 'password' : 'text'"
+                :show-password="field.type === 'password'"
+                :placeholder="fieldPlaceholder(field)"
+                :maxlength="255"
+              />
+              <div v-if="field.desc" class="mt-1 text-xs text-g-600">{{ field.desc }}</div>
+            </ElFormItem>
+          </template>
         </div>
-        <div class="mt-1 text-xs text-g-600">
-          由系统按 APP_URL 自动生成，无需填写；请确保该域名公网可访问且为 HTTPS
-        </div>
-      </ElFormItem>
-
-      <ElFormItem label="渠道名称" prop="name">
-        <ElInput v-model="form.name" placeholder="如：微信小程序支付" maxlength="64" />
-      </ElFormItem>
-
-      <template v-for="field in fields" :key="field.key">
-        <ElFormItem :label="field.label">
-          <ElSwitch
-            v-if="field.type === 'switch'"
-            v-model="configValues[field.key]"
-            :active-value="true"
-            :inactive-value="false"
-          />
-          <ElInput
-            v-else-if="field.type === 'textarea'"
-            v-model="configValues[field.key]"
-            type="textarea"
-            :rows="field.rows || 4"
-            :placeholder="fieldPlaceholder(field)"
-          />
-          <ElInput
-            v-else
-            v-model="configValues[field.key]"
-            :type="field.type === 'password' ? 'password' : 'text'"
-            :show-password="field.type === 'password'"
-            :placeholder="fieldPlaceholder(field)"
-            :maxlength="255"
-          />
-          <div v-if="field.desc" class="mt-1 text-xs text-g-600">{{ field.desc }}</div>
-        </ElFormItem>
-      </template>
-
-      <ElFormItem label="状态" prop="status">
-        <ElSwitch v-model="form.status" :active-value="1" :inactive-value="0" />
-        <span class="ml-2 text-xs text-g-600">停用后用户将无法选择该支付方式</span>
-      </ElFormItem>
-
-      <ElFormItem label="排序" prop="sort">
-        <ElInputNumber v-model="form.sort" :min="0" :max="9999" controls-position="right" />
-        <span class="ml-2 text-xs text-g-600">数字越小越靠前</span>
-      </ElFormItem>
-
-      <ElFormItem label="备注" prop="remark">
-        <ElInput v-model="form.remark" type="textarea" :rows="2" maxlength="255" />
-      </ElFormItem>
+      </div>
     </ElForm>
 
     <template #footer>
@@ -136,13 +177,23 @@
     { label: '支付宝电脑网站', value: 'ali_pc' },
     { label: '支付宝手机网站', value: 'ali_wap' },
     { label: '支付宝 APP', value: 'ali_app' },
-    { label: '支付宝当面付扫码', value: 'ali_qr' }
+    { label: '支付宝当面付扫码', value: 'ali_qr' },
+    { label: '钱包余额（站内）', value: 'wallet' },
+    { label: '模拟支付（仅联调）', value: 'mock' }
   ]
+
+  // 站内渠道（钱包 / 模拟）：没有商户凭据字段，也不产生异步通知地址
+  const INTERNAL_CODES = ['wallet', 'mock']
 
   const formRef = ref<FormInstance>()
   const submitting = ref(false)
   const fields = ref<Api.Pay.ChannelField[]>([])
   const notifyUrl = ref('')
+
+  const requiredFieldCount = computed(() => fields.value.filter((field) => field.required).length)
+
+  // 有凭据字段时用宽弹窗（左右分栏），站内渠道单列即可
+  const dialogWidth = computed(() => (fields.value.length ? '920px' : '560px'))
 
   const form = reactive({
     name: '',
@@ -154,6 +205,9 @@
 
   // 渠道 config 的动态字段值：string 或 boolean（switch）
   const configValues = reactive<Record<string, any>>({})
+
+  const isInternal = computed(() => INTERNAL_CODES.includes(form.code))
+  const isWallet = computed(() => form.code === 'wallet')
 
   const rules: FormRules = {
     code: [{ required: true, message: '请选择支付渠道', trigger: 'change' }],
@@ -195,6 +249,10 @@
       fields.value = []
     }
 
+    // 站内渠道没有异步通知地址，不必请求
+    notifyUrl.value = ''
+    if (INTERNAL_CODES.includes(code)) return
+
     try {
       const res = await fetchGetPayChannelNotifyUrl(code)
       notifyUrl.value = res?.payNotifyUrl ?? ''
@@ -203,7 +261,28 @@
     }
   }
 
+  // 渠道名称默认值：取编码选项的中文名，去掉「（Native）」这类补充说明
+  const defaultNameOf = (code: string): string => {
+    const option = codeOptions.find((item) => item.value === code)
+    if (!option) return ''
+
+    return option.label.replace(/（[^）]*）$/, '').trim()
+  }
+
+  // 记录上一次自动填充的名称：用户手动改过之后，再换编码就不再覆盖
+  const autoName = ref('')
+
   const handleCodeChange = (code: string): void => {
+    // 新增时把渠道名称填成所选编码的名称；编辑态不动已有名称
+    if (!isEdit.value) {
+      const next = defaultNameOf(code)
+      if (next && (!form.name.trim() || form.name === autoName.value)) {
+        form.name = next
+        autoName.value = next
+        formRef.value?.clearValidate('name')
+      }
+    }
+
     loadSchema(code)
   }
 
@@ -221,6 +300,8 @@
         sort: data?.sort ?? 0,
         remark: data?.remark ?? ''
       })
+      // 每次打开都重置自动填充标记，避免沿用到下一次新增
+      autoName.value = ''
 
       await loadSchema(form.code)
 
@@ -321,3 +402,62 @@
     }
   }
 </script>
+
+<style lang="scss" scoped>
+  // 内容超出视口时弹窗内部滚动，避免整页被拉长
+  .channel-dialog {
+    :deep(.el-dialog__body) {
+      max-height: 68vh;
+      padding-top: 4px;
+      overflow-y: auto;
+    }
+  }
+
+  .channel-form {
+    :deep(.el-form-item) {
+      margin-bottom: 16px;
+    }
+
+    :deep(.el-form-item__label) {
+      padding-bottom: 4px;
+      font-weight: 500;
+      color: var(--el-text-color-regular);
+    }
+  }
+
+  // 左右分栏：左基础信息、右商户凭据，两列并排降低高度
+  .form-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+
+  .form-pane {
+    flex: 1;
+    min-width: 0;
+
+    &.is-cred {
+      padding-left: 24px;
+      border-left: 1px solid var(--el-border-color-lighter);
+    }
+  }
+
+  .pane-title {
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+  }
+
+  // 状态与排序并排
+  .form-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+  }
+
+  .internal-alert {
+    margin-bottom: 16px !important;
+    border-radius: 8px;
+  }
+</style>

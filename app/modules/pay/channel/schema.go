@@ -4,9 +4,13 @@ package channel
 const (
 	VendorWechat = "wx"
 	VendorAlipay = "alipay"
+	// VendorWallet 站内钱包（余额支付）
+	VendorWallet = "wallet"
+	// VendorMock 联调用模拟支付
+	VendorMock = "mock"
 )
 
-// 一期支持的 9 种渠道编码，一行 pay_channel 对应一种支付方式。
+// 支持的渠道编码，一行 pay_channel 对应一种支付方式。
 const (
 	CodeWxNative = "wx_native"
 	CodeWxH5     = "wx_h5"
@@ -18,6 +22,11 @@ const (
 	CodeAliWap = "ali_wap"
 	CodeAliApp = "ali_app"
 	CodeAliQr  = "ali_qr"
+
+	// CodeWallet 余额支付：站内扣款，无第三方请求
+	CodeWallet = "wallet"
+	// CodeMock 模拟支付：仅联调使用，需在参数配置开启 pay.mock.enabled
+	CodeMock = "mock"
 )
 
 // 前端拉起方式（CreateOrderResult.Kind）。
@@ -26,7 +35,30 @@ const (
 	KindQR       = "qr"
 	KindJSAPI    = "jsapi"
 	KindApp      = "app"
+	// KindWallet 余额支付成功，前端直接提示支付完成
+	KindWallet = "wallet"
+	// KindMock 模拟支付，前端展示「模拟支付」按钮
+	KindMock = "mock"
 )
+
+// IsWallet 判断是否为余额支付渠道。
+// 入参 code 为渠道编码；返回是否为钱包渠道。
+func IsWallet(code string) bool {
+	return code == CodeWallet
+}
+
+// IsMock 判断是否为模拟支付渠道。
+// 入参 code 为渠道编码；返回是否为模拟渠道。
+func IsMock(code string) bool {
+	return code == CodeMock
+}
+
+// IsInternal 判断是否为站内渠道（钱包 / 模拟支付）。
+// 站内渠道不产生异步通知地址，下单时不需要 APP_URL。
+// 入参 code 为渠道编码；返回是否为站内渠道。
+func IsInternal(code string) bool {
+	return IsWallet(code) || IsMock(code)
+}
 
 // 支付下单取会员 openid 时使用的社交渠道类型：
 // wx_mini 用小程序 openid，wx_jsapi 用公众号 openid，两者不通用。
@@ -107,6 +139,10 @@ var Metas = map[string]Meta{
 	CodeAliWap: {Vendor: VendorAlipay, PayMethod: "wap", Fields: aliFields(), Build: newAlipayChannel},
 	CodeAliApp: {Vendor: VendorAlipay, PayMethod: "app", Fields: aliFields(), Build: newAlipayChannel},
 	CodeAliQr:  {Vendor: VendorAlipay, PayMethod: "qr", Fields: aliFields(), Build: newAlipayChannel},
+
+	// 站内渠道：没有凭据字段，表单为空；钱包余额不足时下单会被拒绝
+	CodeWallet: {Vendor: VendorWallet, PayMethod: "wallet", Fields: nil, Build: newWalletChannel},
+	CodeMock:   {Vendor: VendorMock, PayMethod: "mock", Fields: nil, Build: newMockChannel},
 }
 
 // SocialTypeForCode 返回某渠道下单所需 openid 对应的社交渠道类型。

@@ -53,11 +53,11 @@ type CreateOrderRequest struct {
 // CreateOrderResult 是下单后给前端的统一结果，前端按 Kind 分支处理。
 type CreateOrderResult struct {
 	// Kind 拉起方式：qr（渲染二维码）/ redirect（跳转）/ jsapi（JSAPI/小程序调起参数）/ app（App 调起参数）
-	Kind string
+	Kind string `json:"kind"`
 	// URL 二维码内容或跳转地址；qr / redirect 时有效
-	URL string
+	URL string `json:"url"`
 	// Params JSAPI / 小程序 / App 的调起参数（结构体转 JSON 的 map），jsapi / app 时有效
-	Params map[string]any
+	Params map[string]any `json:"params"`
 }
 
 // QueryOrderResult 是渠道侧订单查询结果。

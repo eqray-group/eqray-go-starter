@@ -195,5 +195,113 @@ declare namespace Api {
       pageNo?: number
       pageSize?: number
     }
+
+    /** 钱包账户：一个会员一行，金额单位「分」 */
+    interface WalletItem {
+      id: string
+      userId: string
+      /** 可用余额（分） */
+      balance: number
+      /** 冻结金额（分），总资产 = balance + frozenBalance */
+      frozenBalance: number
+      /** 累计充值（分） */
+      totalRecharge: number
+      /** 累计消费（分） */
+      totalExpense: number
+      /** 0 冻结 / 1 正常 */
+      status: number
+      updatedAt?: string
+    }
+
+    interface WalletList {
+      list: WalletItem[]
+      total: number
+    }
+
+    interface WalletSearchParams {
+      userId?: string
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 钱包流水 */
+    interface WalletRecordItem {
+      id: string
+      userId: string
+      /** 1 充值 / 2 消费 / 3 退款 / 4 调整 */
+      type: number
+      /** 变动金额（分），正数入账、负数出账 */
+      amount: number
+      /** 变动后余额（分） */
+      balanceAfter: number
+      bizType: string
+      bizOrderNo: string
+      remark: string
+      createdAt?: string
+    }
+
+    interface WalletRecordList {
+      list: WalletRecordItem[]
+      total: number
+    }
+
+    interface WalletRecordSearchParams {
+      userId: string
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 后台调账：正数充值、负数扣减（单位：分） */
+    interface WalletAdjustParams {
+      userId: string
+      amount: number
+      remark?: string
+    }
+
+    /** 后台冻结 / 解冻：金额恒为正数（单位：分） */
+    interface WalletFreezeParams {
+      userId: string
+      amount: number
+      remark?: string
+    }
+
+    /** 前端拉起支付的统一结果，kind 决定渲染方式 */
+    interface ChannelPayInfo {
+      /** qr 二维码 / redirect 跳转 / jsapi 小程序或公众号参数 / app 参数 / wallet 余额成功 / mock 模拟 */
+      kind: string
+      /** 二维码内容或跳转地址（kind=qr / redirect 时有效） */
+      url?: string
+      /** JSAPI / 小程序 / App 的调起参数 */
+      params?: Record<string, unknown>
+    }
+
+    /** 后台联调下单结果 */
+    interface TestOrderResult {
+      id: string
+      merchantOrderNo: string
+      channelCode: string
+      /** 金额（分），固定 1 */
+      price: number
+      /** 订单状态 */
+      status: number
+      payInfo: ChannelPayInfo
+    }
+
+    /** 联调下单入参 */
+    interface TestOrderParams {
+      userId: string
+      channelCode: string
+    }
+
+    /** 批量联调：单个渠道的结果，失败时 error 有值 */
+    interface TestOrderOutcome {
+      channelCode: string
+      id?: string
+      merchantOrderNo?: string
+      price: number
+      status: number
+      payInfo?: ChannelPayInfo
+      error?: string
+    }
   }
 }

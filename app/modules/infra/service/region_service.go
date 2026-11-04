@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"eqray-go-starter/app/facades"
 	baseErrs "eqray-go-starter/app/modules/base/errs"
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
@@ -36,6 +38,40 @@ type RegionItem struct {
 	Level string `json:"level"`
 	// Leaf 是否叶子节点（区县为 true，直辖市下的区县也是 true）
 	Leaf bool `json:"leaf"`
+}
+
+// RegionListQuery 是后台区划列表的查询条件。
+type RegionListQuery struct {
+	// Keyword 名称或编码模糊匹配
+	Keyword string
+	// Level 层级：province / city / district，空表示全部
+	Level string
+	// ParentAdcode 父级编码，空表示全部
+	ParentAdcode string
+	// PageNo / PageSize 分页参数
+	PageNo   int
+	PageSize int
+}
+
+// RegionStats 是区划总览：各层级条数与最后同步时间。
+type RegionStats struct {
+	// Total 总条数
+	Total int64 `json:"total"`
+	// Province 省级条数
+	Province int64 `json:"province"`
+	// City 市级条数
+	City int64 `json:"city"`
+	// District 区县条数
+	District int64 `json:"district"`
+	// LastSyncedAt 最后同步时间，未同步过为空串
+	LastSyncedAt string `json:"lastSyncedAt"`
+}
+
+// RegionPage 是后台区划列表的返回结构。
+type RegionPage struct {
+	List  []model.InfraRegionModel `json:"list"`
+	Total int64                    `json:"total"`
+	Stats RegionStats              `json:"stats"`
 }
 
 // RegionService 负责行政区划的查询与一次性同步。
@@ -97,29 +133,91 @@ func (s *RegionService) Children(ctx context.Context, parentAdcode string) ([]Re
 	return items, nil
 }
 
+// Page 分页查询区划，供后台「省市县」页查看，并附带各层级条数与最后同步时间。
+// 入参 q 为查询条件；返回列表、总数与总览统计。
+func (s *RegionService) Page(ctx context.Context, q RegionListQuery) (*RegionPage, error) {
+	pageNo, pageSize := q.PageNo, q.PageSize
+	if pageNo <= 0 {
+		pageNo = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	list, total, err := s.regions.Paginate(ctx, repository.RegionFilter{
+		Keyword:      q.Keyword,
+		Level:        q.Level,
+		ParentAdcode: strings.TrimSpace(q.ParentAdcode),
+	}, pageNo, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	counts, err := s.regions.CountByLevel(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lastSyncedAt, err := s.regions.LastSyncedAt(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var statsTotal int64
+	for _, count := range counts {
+		statsTotal += count
+	}
+
+	return &RegionPage{
+		List:  list,
+		Total: total,
+		Stats: RegionStats{
+			Total:        statsTotal,
+			Province:     counts["province"],
+			City:         counts["city"],
+			District:     counts["district"],
+			LastSyncedAt: lastSyncedAt,
+		},
+	}, nil
+}
+
+// regionSyncMu 保证同一时间只有一个同步任务，避免两次同步交叉删表插入导致锁等待。
+var regionSyncMu sync.Mutex
+
 // SyncFromAMap 从高德全量拉取省市区并整表刷新，返回写入条数。
 // 需要后台配置「Web 服务」Key（map.amap.serverKey），与前端 JS Key 不是同一种类型。
 // 入参 ctx 为请求上下文；返回写入条数与业务错误码。
 func (s *RegionService) SyncFromAMap(ctx context.Context) (int, error) {
+	if !regionSyncMu.TryLock() {
+		return 0, baseErrs.WithMsg(baseErrs.BadRequest, "已有同步任务在执行，请稍后再试")
+	}
+	defer regionSyncMu.Unlock()
+
 	key := strings.TrimSpace(s.configs.GetString(ctx, regionServerKeyConfig, ""))
 	if key == "" {
 		return 0, baseErrs.WithMsg(baseErrs.BadRequest,
 			"请先在「参数配置」填写高德 Web 服务 Key（map.amap.serverKey），JS API Key 不能用于本次同步")
 	}
 
+	startedAt := time.Now()
 	resp, err := fetchAmapDistricts(ctx, key)
 	if err != nil {
+		facades.Log().Errorf("[行政区划同步] 拉取高德数据失败：%v", err)
 		return 0, err
 	}
 
 	rows := flattenDistricts(resp)
 	if len(rows) == 0 {
-		return 0, baseErrs.WithMsg(baseErrs.BadRequest, "高德未返回行政区划数据，请检查 Key 的权限与配额")
+		return 0, baseErrs.WithMsg(baseErrs.BadRequest,
+			"高德未返回行政区划数据，请确认该 Key 已开通「行政区划查询」且配额未用尽")
 	}
 
 	if err := s.regions.ReplaceAll(ctx, rows); err != nil {
-		return 0, err
+		// 写库错误原样带出，后台页面能直接看到真实原因（表不存在 / 字段超长 / 唯一键冲突等）
+		facades.Log().Errorf("[行政区划同步] 写库失败（%d 条）：%v", len(rows), err)
+		return 0, baseErrs.WithMsg(baseErrs.BadRequest, "写入行政区划失败："+err.Error())
 	}
+
+	facades.Log().Infof("[行政区划同步] 完成：%d 条，耗时 %d ms", len(rows), time.Since(startedAt).Milliseconds())
 
 	return len(rows), nil
 }
@@ -181,6 +279,8 @@ func fetchAmapDistricts(ctx context.Context, key string) (*amapDistrictResponse,
 func flattenDistricts(resp *amapDistrictResponse) []model.InfraRegionModel {
 	rows := make([]model.InfraRegionModel, 0, 4000)
 	now := types.Now()
+	// 高德偶发返回重复 adcode（如省直辖节点），按首次出现保留，避免撞唯一键
+	seen := make(map[string]struct{}, 4000)
 
 	var walk func(parentAdcode string, list []amapDistrict)
 	walk = func(parentAdcode string, list []amapDistrict) {
@@ -189,13 +289,17 @@ func flattenDistricts(resp *amapDistrictResponse) []model.InfraRegionModel {
 			if adcode == "" || adcode == RegionRootAdcode {
 				continue
 			}
+			if _, exists := seen[adcode]; exists {
+				continue
+			}
+			seen[adcode] = struct{}{}
 
 			rows = append(rows, model.InfraRegionModel{
 				ID:           support.NewID(),
 				ParentAdcode: parentAdcode,
 				Adcode:       adcode,
-				Name:         item.Name,
-				Level:        item.Level,
+				Name:         truncateRunes(item.Name, 64),
+				Level:        truncateRunes(item.Level, 16),
 				Sort:         index,
 				Status:       1,
 				CreatedAt:    now,
@@ -214,4 +318,15 @@ func flattenDistricts(resp *amapDistrictResponse) []model.InfraRegionModel {
 	}
 
 	return rows
+}
+
+// truncateRunes 按字符数截断，避免超出表字段长度导致整批写入失败。
+// 入参 value 为原始值、max 为最大字符数；返回截断后的字符串。
+func truncateRunes(value string, max int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= max {
+		return string(runes)
+	}
+
+	return string(runes[:max])
 }

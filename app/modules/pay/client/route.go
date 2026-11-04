@@ -15,13 +15,20 @@ const Prefix = "/api/v1/client/pay"
 
 // Register 注册 C 端接口，由 pay.Register() 统一调用。
 func Register() {
-	payController := payController.NewPayController()
+	paymentController := payController.NewPayController()
+	walletController := payController.NewPayWalletController()
 
 	facades.Route().Prefix(Prefix).Group(func(r route.Router) {
 		// 可用渠道：登录后即可查看支付方式列表
 		memberAuth := r.Middleware(&baseMiddleware.MemberAuth{})
-		memberAuth.Get("/channels", payController.Channels)
-		memberAuth.Post("/orders", payController.Store)
-		memberAuth.Get("/orders/{merchantOrderNo}", payController.Show)
+		memberAuth.Get("/channels", paymentController.Channels)
+		memberAuth.Post("/orders", paymentController.Store)
+		memberAuth.Get("/orders/{merchantOrderNo}", paymentController.Show)
+		// 模拟支付：仅 mock 渠道 + 参数开关开启时可用
+		memberAuth.Post("/orders/{merchantOrderNo}/mock-pay", walletController.MockPay)
+
+		// 钱包余额与流水
+		memberAuth.Get("/wallet", walletController.Show)
+		memberAuth.Get("/wallet/records", walletController.Records)
 	})
 }
