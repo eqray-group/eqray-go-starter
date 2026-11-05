@@ -1,230 +1,196 @@
-<!-- 基础设施 / 消息通知：渠道配置、模板管理与发送记录 -->
+<!-- 基础设施 / 消息通知：渠道配置、模板管理、发送记录 -->
 <template>
   <div class="infra-notice-page art-full-height">
-    <ElCard class="notice-card">
+    <ElCard class="notice-card art-table-card">
       <ElTabs v-model="activeTab" class="notice-tabs">
         <!-- 渠道 -->
-        <ElTabPane label="渠道" name="channel">
-          <div class="toolbar">
-            <ElButton
-              v-auth="'infra:notice:update'"
-              type="primary"
-              @click="showChannelDialog()"
-              v-ripple
-            >
-              新增渠道
-            </ElButton>
-            <ElInput v-model="channelQuery.keyword" placeholder="渠道名称" clearable class="w-44" />
-            <ElSelect v-model="channelQuery.type" placeholder="全部类型" clearable class="w-40">
-              <ElOption
-                v-for="item in types"
-                :key="item.type"
-                :label="item.name"
-                :value="item.type"
-              />
-            </ElSelect>
-            <ElButton @click="loadChannels(1)">查询</ElButton>
-          </div>
+        <ElTabPane name="channel">
+          <template #label>
+            <span>渠道</span>
+            <span v-if="channelPagination.total" class="tab-count">
+              {{ channelPagination.total }}
+            </span>
+          </template>
 
-          <ElTable v-loading="channelLoading" :data="channels" border>
-            <ElTableColumn prop="name" label="渠道名称" min-width="160" show-overflow-tooltip />
-            <ElTableColumn label="类型" width="150">
-              <template #default="{ row }">{{ typeName(row.type) }}</template>
-            </ElTableColumn>
-            <ElTableColumn label="状态" width="90">
-              <template #default="{ row }">
-                <ElTag :type="row.status === 1 ? 'success' : 'info'" size="small">
-                  {{ row.status === 1 ? '启用' : '停用' }}
-                </ElTag>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-            <ElTableColumn prop="updatedAt" label="更新时间" width="170" />
-            <ElTableColumn label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <ElButton v-auth="'infra:notice:send'" link type="primary" @click="handleTest(row)">
-                  测试
-                </ElButton>
-                <ElButton
-                  v-auth="'infra:notice:update'"
-                  link
-                  type="primary"
-                  @click="showChannelDialog(row)"
-                >
-                  编辑
-                </ElButton>
-                <ElButton
-                  v-auth="'infra:notice:delete'"
-                  link
-                  type="danger"
-                  @click="handleDeleteChannel(row)"
-                >
-                  删除
-                </ElButton>
-              </template>
-            </ElTableColumn>
-            <template #empty>
-              <ElEmpty description="还没有渠道，先新增一个邮件或群机器人" :image-size="90" />
-            </template>
-          </ElTable>
-
-          <div class="pager">
-            <ElPagination
-              v-model:current-page="channelQuery.pageNo"
-              v-model:page-size="channelQuery.pageSize"
-              :total="channelTotal"
-              :page-sizes="[10, 20, 50]"
-              layout="total, sizes, prev, pager, next"
-              @current-change="loadChannels()"
-              @size-change="loadChannels(1)"
+          <div v-if="activeTab === 'channel'" class="pane">
+            <ArtSearchBar
+              v-model="channelSearchForm"
+              :items="channelSearchItems"
+              :rules="{}"
+              @reset="channelResetSearchParams"
+              @search="handleChannelSearch"
             />
+
+            <ArtTableHeader
+              v-model:columns="channelColumnChecks"
+              :loading="channelLoading"
+              @refresh="channelRefresh"
+            >
+              <template #left>
+                <ElSpace wrap>
+                  <ElButton
+                    v-auth="'infra:notice:update'"
+                    type="primary"
+                    @click="showChannelDialog()"
+                    v-ripple
+                  >
+                    新增渠道
+                  </ElButton>
+                  <ElTag type="info" effect="plain">邮件走 SMTP，群消息走 Webhook</ElTag>
+                </ElSpace>
+              </template>
+            </ArtTableHeader>
+
+            <div class="pane-table">
+              <ArtTable
+                :show-table-header="false"
+                :loading="channelLoading"
+                :data="channelData"
+                :columns="channelColumns"
+                :pagination="channelPagination"
+                @pagination:size-change="channelHandleSizeChange"
+                @pagination:current-change="channelHandleCurrentChange"
+              >
+                <template #operation="{ row }">
+                  <ElButton
+                    v-auth="'infra:notice:send'"
+                    link
+                    type="primary"
+                    @click="showTestDialog(row)"
+                  >
+                    测试
+                  </ElButton>
+                  <ElButton
+                    v-auth="'infra:notice:update'"
+                    link
+                    type="primary"
+                    @click="showChannelDialog(row)"
+                  >
+                    编辑
+                  </ElButton>
+                  <ElButton
+                    v-auth="'infra:notice:delete'"
+                    link
+                    type="danger"
+                    @click="handleDeleteChannel(row)"
+                  >
+                    删除
+                  </ElButton>
+                </template>
+              </ArtTable>
+            </div>
           </div>
         </ElTabPane>
 
         <!-- 模板 -->
-        <ElTabPane label="模板" name="template">
-          <div class="toolbar">
-            <ElButton
-              v-auth="'infra:notice:update'"
-              type="primary"
-              @click="showTemplateDialog()"
-              v-ripple
+        <ElTabPane name="template">
+          <template #label>
+            <span>模板</span>
+            <span v-if="templatePagination.total" class="tab-count">
+              {{ templatePagination.total }}
+            </span>
+          </template>
+
+          <div v-if="activeTab === 'template'" class="pane">
+            <ArtSearchBar
+              v-model="templateSearchForm"
+              :items="templateSearchItems"
+              :rules="{}"
+              @reset="templateResetSearchParams"
+              @search="handleTemplateSearch"
+            />
+
+            <ArtTableHeader
+              v-model:columns="templateColumnChecks"
+              :loading="templateLoading"
+              @refresh="templateRefresh"
             >
-              新增模板
-            </ElButton>
-            <ElInput
-              v-model="templateQuery.keyword"
-              placeholder="编码 / 名称"
-              clearable
-              class="w-44"
-            />
-            <ElSelect v-model="templateQuery.type" placeholder="全部类型" clearable class="w-40">
-              <ElOption
-                v-for="item in types"
-                :key="item.type"
-                :label="item.name"
-                :value="item.type"
-              />
-            </ElSelect>
-            <ElButton @click="loadTemplates(1)">查询</ElButton>
-          </div>
-
-          <ElTable v-loading="templateLoading" :data="templates" border>
-            <ElTableColumn prop="code" label="编码" width="180" show-overflow-tooltip />
-            <ElTableColumn prop="name" label="名称" min-width="150" show-overflow-tooltip />
-            <ElTableColumn label="类型" width="150">
-              <template #default="{ row }">{{ typeName(row.type) }}</template>
-            </ElTableColumn>
-            <ElTableColumn prop="title" label="标题" min-width="160" show-overflow-tooltip />
-            <ElTableColumn label="状态" width="90">
-              <template #default="{ row }">
-                <ElTag :type="row.status === 1 ? 'success' : 'info'" size="small">
-                  {{ row.status === 1 ? '启用' : '停用' }}
-                </ElTag>
+              <template #left>
+                <ElSpace wrap>
+                  <ElButton
+                    v-auth="'infra:notice:update'"
+                    type="primary"
+                    @click="showTemplateDialog()"
+                    v-ripple
+                  >
+                    新增模板
+                  </ElButton>
+                  <ElTag type="info" effect="plain">业务按编码调用，内容支持变量占位</ElTag>
+                </ElSpace>
               </template>
-            </ElTableColumn>
-            <ElTableColumn label="操作" width="140" fixed="right">
-              <template #default="{ row }">
-                <ElButton
-                  v-auth="'infra:notice:update'"
-                  link
-                  type="primary"
-                  @click="showTemplateDialog(row)"
-                >
-                  编辑
-                </ElButton>
-                <ElButton
-                  v-auth="'infra:notice:delete'"
-                  link
-                  type="danger"
-                  @click="handleDeleteTemplate(row)"
-                >
-                  删除
-                </ElButton>
-              </template>
-            </ElTableColumn>
-            <template #empty>
-              <ElEmpty description="还没有模板，业务按编码调用" :image-size="90" />
-            </template>
-          </ElTable>
+            </ArtTableHeader>
 
-          <div class="pager">
-            <ElPagination
-              v-model:current-page="templateQuery.pageNo"
-              v-model:page-size="templateQuery.pageSize"
-              :total="templateTotal"
-              :page-sizes="[10, 20, 50]"
-              layout="total, sizes, prev, pager, next"
-              @current-change="loadTemplates()"
-              @size-change="loadTemplates(1)"
-            />
+            <div class="pane-table">
+              <ArtTable
+                :show-table-header="false"
+                :loading="templateLoading"
+                :data="templateData"
+                :columns="templateColumns"
+                :pagination="templatePagination"
+                @pagination:size-change="templateHandleSizeChange"
+                @pagination:current-change="templateHandleCurrentChange"
+              >
+                <template #operation="{ row }">
+                  <ElButton
+                    v-auth="'infra:notice:update'"
+                    link
+                    type="primary"
+                    @click="showTemplateDialog(row)"
+                  >
+                    编辑
+                  </ElButton>
+                  <ElButton
+                    v-auth="'infra:notice:delete'"
+                    link
+                    type="danger"
+                    @click="handleDeleteTemplate(row)"
+                  >
+                    删除
+                  </ElButton>
+                </template>
+              </ArtTable>
+            </div>
           </div>
         </ElTabPane>
 
         <!-- 发送记录 -->
-        <ElTabPane label="发送记录" name="log">
-          <div class="toolbar">
-            <ElSelect v-model="logQuery.type" placeholder="全部类型" clearable class="w-40">
-              <ElOption
-                v-for="item in types"
-                :key="item.type"
-                :label="item.name"
-                :value="item.type"
-              />
-            </ElSelect>
-            <ElSelect v-model="logQuery.status" placeholder="全部结果" clearable class="w-36">
-              <ElOption label="成功" :value="1" />
-              <ElOption label="失败" :value="0" />
-            </ElSelect>
-            <ElButton @click="loadLogs(1)">查询</ElButton>
-            <span class="text-xs text-g-600">失败原因与正文可展开查看</span>
-          </div>
+        <ElTabPane name="log">
+          <template #label>
+            <span>发送记录</span>
+            <span v-if="logPagination.total" class="tab-count">{{ logPagination.total }}</span>
+          </template>
 
-          <ElTable v-loading="logLoading" :data="logs" border>
-            <ElTableColumn type="expand">
-              <template #default="{ row }">
-                <div class="log-detail">
-                  <div v-if="row.error" class="mb-2">
-                    <div class="log-label">失败原因</div>
-                    <pre class="log-pre is-error">{{ row.error }}</pre>
-                  </div>
-                  <div class="log-label">发送内容</div>
-                  <pre class="log-pre">{{ row.content || '（无内容）' }}</pre>
-                </div>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn prop="createdAt" label="时间" width="170" />
-            <ElTableColumn prop="channelName" label="渠道" width="150" show-overflow-tooltip />
-            <ElTableColumn label="类型" width="140">
-              <template #default="{ row }">{{ typeName(row.type) }}</template>
-            </ElTableColumn>
-            <ElTableColumn prop="templateCode" label="模板" width="150" show-overflow-tooltip />
-            <ElTableColumn prop="target" label="接收目标" min-width="140" show-overflow-tooltip />
-            <ElTableColumn label="结果" width="90">
-              <template #default="{ row }">
-                <ElTag :type="row.status === 1 ? 'success' : 'danger'" size="small">
-                  {{ row.status === 1 ? '成功' : '失败' }}
-                </ElTag>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="耗时" width="90">
-              <template #default="{ row }">{{ row.duration }} ms</template>
-            </ElTableColumn>
-            <template #empty>
-              <ElEmpty description="还没有发送记录" :image-size="90" />
-            </template>
-          </ElTable>
-
-          <div class="pager">
-            <ElPagination
-              v-model:current-page="logQuery.pageNo"
-              v-model:page-size="logQuery.pageSize"
-              :total="logTotal"
-              :page-sizes="[20, 50, 100]"
-              layout="total, sizes, prev, pager, next"
-              @current-change="loadLogs()"
-              @size-change="loadLogs(1)"
+          <div v-if="activeTab === 'log'" class="pane">
+            <ArtSearchBar
+              v-model="logSearchForm"
+              :items="logSearchItems"
+              :rules="{}"
+              :sanitize-output="{ keepZero: true }"
+              @reset="logResetSearchParams"
+              @search="handleLogSearch"
             />
+
+            <ArtTableHeader
+              v-model:columns="logColumnChecks"
+              :loading="logLoading"
+              @refresh="logRefresh"
+            >
+              <template #left>
+                <ElTag type="info" effect="plain">展开行可看失败原因与完整正文</ElTag>
+              </template>
+            </ArtTableHeader>
+
+            <div class="pane-table">
+              <ArtTable
+                :show-table-header="false"
+                :loading="logLoading"
+                :data="logData"
+                :columns="logColumns"
+                :pagination="logPagination"
+                @pagination:size-change="logHandleSizeChange"
+                @pagination:current-change="logHandleCurrentChange"
+              />
+            </div>
           </div>
         </ElTabPane>
       </ElTabs>
@@ -234,46 +200,41 @@
       v-model:visible="channelDialogVisible"
       :channel-data="currentChannel"
       :types="types"
-      @success="loadChannels()"
+      @success="channelRefresh"
     />
 
     <NoticeTemplateDialog
       v-model:visible="templateDialogVisible"
       :template-data="currentTemplate"
       :types="types"
-      @success="loadTemplates()"
+      @success="templateRefresh"
+    />
+
+    <NoticeTestDialog
+      v-model:visible="testDialogVisible"
+      :channel="testChannel"
+      :type-name="testChannel ? typeName(testChannel.type) : ''"
+      @success="logRefresh"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-  import {
-    ElButton,
-    ElCard,
-    ElEmpty,
-    ElInput,
-    ElMessage,
-    ElMessageBox,
-    ElOption,
-    ElPagination,
-    ElSelect,
-    ElTabPane,
-    ElTable,
-    ElTableColumn,
-    ElTabs,
-    ElTag
-  } from 'element-plus'
+  import { h } from 'vue'
+  import { ElButton, ElCard, ElMessage, ElMessageBox, ElSpace, ElTag } from 'element-plus'
+  import { useTable } from '@/hooks/core/useTable'
   import {
     fetchDeleteNoticeChannel,
     fetchDeleteNoticeTemplate,
     fetchGetNoticeChannels,
     fetchGetNoticeLogs,
     fetchGetNoticeTemplates,
-    fetchGetNoticeTypes,
-    fetchTestNoticeChannel
+    fetchGetNoticeTypes
   } from '@/api/infra/notice'
   import NoticeChannelDialog from './modules/notice-channel-dialog.vue'
+  import NoticeLogDetail from './modules/notice-log-detail.vue'
   import NoticeTemplateDialog from './modules/notice-template-dialog.vue'
+  import NoticeTestDialog from './modules/notice-test-dialog.vue'
 
   defineOptions({ name: 'InfraNotice' })
 
@@ -285,116 +246,268 @@
   const activeTab = ref<'channel' | 'template' | 'log'>('channel')
   const types = ref<TypeSchema[]>([])
 
-  // ---------- 渠道 ----------
-  const channels = ref<ChannelItem[]>([])
-  const channelTotal = ref(0)
-  const channelLoading = ref(false)
-  const channelDialogVisible = ref(false)
-  const currentChannel = ref<ChannelItem | null>(null)
-  const channelQuery = reactive({
-    keyword: '',
-    type: '',
-    pageNo: 1,
-    pageSize: 10
-  })
-
-  // ---------- 模板 ----------
-  const templates = ref<TemplateItem[]>([])
-  const templateTotal = ref(0)
-  const templateLoading = ref(false)
-  const templateDialogVisible = ref(false)
-  const currentTemplate = ref<TemplateItem | null>(null)
-  const templateQuery = reactive({
-    keyword: '',
-    type: '',
-    pageNo: 1,
-    pageSize: 10
-  })
-
-  // ---------- 发送记录 ----------
-  const logs = ref<LogItem[]>([])
-  const logTotal = ref(0)
-  const logLoading = ref(false)
-  const logQuery = reactive({
-    type: '',
-    status: undefined as number | undefined,
-    pageNo: 1,
-    pageSize: 20
-  })
+  const typeOptions = computed(() =>
+    types.value.map((item) => ({ label: item.name, value: item.type }))
+  )
 
   const typeName = (type: string): string =>
     types.value.find((item) => item.type === type)?.name || type
 
-  const loadTypes = async (): Promise<void> => {
-    try {
-      types.value = (await fetchGetNoticeTypes()) ?? []
-    } catch {
-      types.value = []
+  const typeTag = (type: string): 'primary' | 'success' | 'warning' | 'info' => {
+    switch (type) {
+      case 'email':
+        return 'primary'
+      case 'wecom':
+        return 'success'
+      case 'dingtalk':
+        return 'warning'
+      default:
+        return 'info'
     }
   }
 
-  const loadChannels = async (page?: number): Promise<void> => {
-    if (page) channelQuery.pageNo = page
-
-    channelLoading.value = true
+  // 渠道配置是 JSON 文本，列表里只给一句人话摘要，避免把密码等字段直接铺在表格里
+  const configSummary = (row: ChannelItem): string => {
     try {
-      const res = await fetchGetNoticeChannels({
-        keyword: channelQuery.keyword || undefined,
-        type: channelQuery.type || undefined,
-        pageNo: channelQuery.pageNo,
-        pageSize: channelQuery.pageSize
-      })
-      channels.value = res?.list ?? []
-      channelTotal.value = res?.total ?? 0
+      const config = JSON.parse(row.config || '{}') as Record<string, string>
+      if (row.type === 'email') {
+        if (!config.host) return '未配置'
+        return `${config.host}:${config.port || 25}`
+      }
+      if (!config.webhook) return '未配置'
+      return config.secret ? 'Webhook + 签名' : 'Webhook 已配置'
     } catch {
-      channels.value = []
-      channelTotal.value = 0
-    } finally {
-      channelLoading.value = false
+      return '配置格式异常'
     }
   }
 
-  const loadTemplates = async (page?: number): Promise<void> => {
-    if (page) templateQuery.pageNo = page
-
-    templateLoading.value = true
-    try {
-      const res = await fetchGetNoticeTemplates({
-        keyword: templateQuery.keyword || undefined,
-        type: templateQuery.type || undefined,
-        pageNo: templateQuery.pageNo,
-        pageSize: templateQuery.pageSize
-      })
-      templates.value = res?.list ?? []
-      templateTotal.value = res?.total ?? 0
-    } catch {
-      templates.value = []
-      templateTotal.value = 0
-    } finally {
-      templateLoading.value = false
+  // ---------- 渠道 ----------
+  const channelSearchForm = ref<Api.Infra.NoticeSearchParams>({})
+  const channelSearchItems = computed(() => [
+    {
+      label: '关键字',
+      key: 'keyword',
+      type: 'input',
+      placeholder: '渠道名称',
+      clearable: true
+    },
+    {
+      label: '类型',
+      key: 'type',
+      type: 'select',
+      props: { placeholder: '全部类型', clearable: true, options: typeOptions.value }
     }
+  ])
+
+  const {
+    columns: channelColumns,
+    columnChecks: channelColumnChecks,
+    data: channelData,
+    loading: channelLoading,
+    pagination: channelPagination,
+    searchParams: channelSearchParams,
+    getData: channelGetData,
+    resetSearchParams: channelResetSearchParams,
+    handleSizeChange: channelHandleSizeChange,
+    handleCurrentChange: channelHandleCurrentChange,
+    refreshData: channelRefresh
+  } = useTable({
+    core: {
+      apiFn: fetchGetNoticeChannels,
+      apiParams: { pageNo: 1, pageSize: 10 },
+      columnsFactory: () => [
+        { prop: 'name', label: '渠道名称', minWidth: 160, showOverflowTooltip: true },
+        {
+          prop: 'type',
+          label: '类型',
+          width: 150,
+          formatter: (row: ChannelItem) =>
+            h(ElTag, { type: typeTag(row.type), size: 'small', effect: 'plain' }, () =>
+              typeName(row.type)
+            )
+        },
+        {
+          prop: 'config',
+          label: '连接',
+          minWidth: 170,
+          formatter: (row: ChannelItem) => configSummary(row)
+        },
+        {
+          prop: 'status',
+          label: '状态',
+          width: 90,
+          formatter: (row: ChannelItem) =>
+            h(ElTag, { type: row.status === 1 ? 'success' : 'info', size: 'small' }, () =>
+              row.status === 1 ? '启用' : '停用'
+            )
+        },
+        { prop: 'remark', label: '备注', minWidth: 150, showOverflowTooltip: true },
+        { prop: 'updatedAt', label: '更新时间', width: 165 },
+        { prop: 'operation', label: '操作', width: 160, fixed: 'right', useSlot: true }
+      ]
+    }
+  })
+
+  const handleChannelSearch = (params: Api.Infra.NoticeSearchParams): void => {
+    Object.assign(channelSearchForm.value, params)
+    Object.assign(channelSearchParams, { keyword: undefined, type: undefined }, params)
+    channelGetData()
   }
 
-  const loadLogs = async (page?: number): Promise<void> => {
-    if (page) logQuery.pageNo = page
-
-    logLoading.value = true
-    try {
-      const res = await fetchGetNoticeLogs({
-        type: logQuery.type || undefined,
-        status: logQuery.status,
-        pageNo: logQuery.pageNo,
-        pageSize: logQuery.pageSize
-      })
-      logs.value = res?.list ?? []
-      logTotal.value = res?.total ?? 0
-    } catch {
-      logs.value = []
-      logTotal.value = 0
-    } finally {
-      logLoading.value = false
+  // ---------- 模板 ----------
+  const templateSearchForm = ref<Api.Infra.NoticeSearchParams>({})
+  const templateSearchItems = computed(() => [
+    {
+      label: '关键字',
+      key: 'keyword',
+      type: 'input',
+      placeholder: '编码 / 名称',
+      clearable: true
+    },
+    {
+      label: '类型',
+      key: 'type',
+      type: 'select',
+      props: { placeholder: '全部类型', clearable: true, options: typeOptions.value }
     }
+  ])
+
+  const {
+    columns: templateColumns,
+    columnChecks: templateColumnChecks,
+    data: templateData,
+    loading: templateLoading,
+    pagination: templatePagination,
+    searchParams: templateSearchParams,
+    getData: templateGetData,
+    resetSearchParams: templateResetSearchParams,
+    handleSizeChange: templateHandleSizeChange,
+    handleCurrentChange: templateHandleCurrentChange,
+    refreshData: templateRefresh
+  } = useTable({
+    core: {
+      apiFn: fetchGetNoticeTemplates,
+      apiParams: { pageNo: 1, pageSize: 10 },
+      columnsFactory: () => [
+        { prop: 'code', label: '编码', width: 170, showOverflowTooltip: true },
+        { prop: 'name', label: '名称', minWidth: 150, showOverflowTooltip: true },
+        {
+          prop: 'type',
+          label: '类型',
+          width: 150,
+          formatter: (row: TemplateItem) =>
+            h(ElTag, { type: typeTag(row.type), size: 'small', effect: 'plain' }, () =>
+              typeName(row.type)
+            )
+        },
+        { prop: 'title', label: '标题', minWidth: 160, showOverflowTooltip: true },
+        {
+          prop: 'status',
+          label: '状态',
+          width: 90,
+          formatter: (row: TemplateItem) =>
+            h(ElTag, { type: row.status === 1 ? 'success' : 'info', size: 'small' }, () =>
+              row.status === 1 ? '启用' : '停用'
+            )
+        },
+        { prop: 'operation', label: '操作', width: 130, fixed: 'right', useSlot: true }
+      ]
+    }
+  })
+
+  const handleTemplateSearch = (params: Api.Infra.NoticeSearchParams): void => {
+    Object.assign(templateSearchForm.value, params)
+    Object.assign(templateSearchParams, { keyword: undefined, type: undefined }, params)
+    templateGetData()
   }
+
+  // ---------- 发送记录 ----------
+  const logSearchForm = ref<Api.Infra.NoticeSearchParams>({})
+  const logSearchItems = computed(() => [
+    {
+      label: '类型',
+      key: 'type',
+      type: 'select',
+      props: { placeholder: '全部类型', clearable: true, options: typeOptions.value }
+    },
+    {
+      label: '结果',
+      key: 'status',
+      type: 'select',
+      props: {
+        placeholder: '全部结果',
+        clearable: true,
+        options: [
+          { label: '成功', value: 1 },
+          { label: '失败', value: 0 }
+        ]
+      }
+    }
+  ])
+
+  const {
+    columns: logColumns,
+    columnChecks: logColumnChecks,
+    data: logData,
+    loading: logLoading,
+    pagination: logPagination,
+    searchParams: logSearchParams,
+    getData: logGetData,
+    resetSearchParams: logResetSearchParams,
+    handleSizeChange: logHandleSizeChange,
+    handleCurrentChange: logHandleCurrentChange,
+    refreshData: logRefresh
+  } = useTable({
+    core: {
+      apiFn: fetchGetNoticeLogs,
+      apiParams: { pageNo: 1, pageSize: 20 },
+      columnsFactory: () => [
+        { type: 'expand', formatter: (row: LogItem) => h(NoticeLogDetail, { row }) },
+        { prop: 'createdAt', label: '时间', width: 165 },
+        { prop: 'channelName', label: '渠道', width: 150, showOverflowTooltip: true },
+        {
+          prop: 'type',
+          label: '类型',
+          width: 140,
+          formatter: (row: LogItem) =>
+            h(ElTag, { type: typeTag(row.type), size: 'small', effect: 'plain' }, () =>
+              typeName(row.type)
+            )
+        },
+        { prop: 'templateCode', label: '模板', width: 150, showOverflowTooltip: true },
+        { prop: 'target', label: '接收目标', minWidth: 150, showOverflowTooltip: true },
+        {
+          prop: 'status',
+          label: '结果',
+          width: 90,
+          formatter: (row: LogItem) =>
+            h(ElTag, { type: row.status === 1 ? 'success' : 'danger', size: 'small' }, () =>
+              row.status === 1 ? '成功' : '失败'
+            )
+        },
+        {
+          prop: 'duration',
+          label: '耗时',
+          width: 90,
+          formatter: (row: LogItem) => `${row.duration} ms`
+        }
+      ]
+    }
+  })
+
+  const handleLogSearch = (params: Api.Infra.NoticeSearchParams): void => {
+    Object.assign(logSearchForm.value, params)
+    Object.assign(logSearchParams, { type: undefined, status: undefined }, params)
+    logGetData()
+  }
+
+  // ---------- 弹窗 ----------
+  const channelDialogVisible = ref(false)
+  const currentChannel = ref<ChannelItem | null>(null)
+  const templateDialogVisible = ref(false)
+  const currentTemplate = ref<TemplateItem | null>(null)
+  const testDialogVisible = ref(false)
+  const testChannel = ref<ChannelItem | null>(null)
 
   const showChannelDialog = (row?: ChannelItem): void => {
     currentChannel.value = row ?? null
@@ -406,51 +519,12 @@
     templateDialogVisible.value = true
   }
 
-  // 测试发送：邮件渠道先问收件人，机器人渠道直接确认
-  const handleTest = async (row: ChannelItem): Promise<void> => {
-    let target = ''
-
-    if (row.type === 'email') {
-      try {
-        const result = await ElMessageBox.prompt('发送到哪个邮箱？', '测试发送', {
-          confirmButtonText: '发送',
-          cancelButtonText: '取消',
-          inputPlaceholder: 'name@example.com',
-          inputValue: ''
-        })
-        target = (result as { value: string }).value?.trim() || ''
-      } catch {
-        return
-      }
-      if (!target) {
-        ElMessage.warning('请填写收件人')
-        return
-      }
-    } else {
-      try {
-        await ElMessageBox.confirm(`向「${row.name}」发送一条测试消息？`, '测试发送', {
-          confirmButtonText: '发送',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-      } catch {
-        return
-      }
-    }
-
-    try {
-      const log = await fetchTestNoticeChannel(row.id, target || undefined)
-      if (log?.status === 1) {
-        ElMessage.success(`发送成功，耗时 ${log.duration} ms`)
-      } else {
-        ElMessage.error(`发送失败：${log?.error || '未知原因'}`)
-      }
-      loadLogs(1)
-    } catch {
-      // 错误提示已由请求层统一弹出
-    }
+  const showTestDialog = (row: ChannelItem): void => {
+    testChannel.value = row
+    testDialogVisible.value = true
   }
 
+  // ---------- 删除 ----------
   const handleDeleteChannel = async (row: ChannelItem): Promise<void> => {
     try {
       await ElMessageBox.confirm(`删除渠道「${row.name}」？已发送的记录会保留。`, '删除渠道', {
@@ -465,7 +539,7 @@
     try {
       await fetchDeleteNoticeChannel(row.id)
       ElMessage.success('已删除')
-      loadChannels()
+      channelRefresh()
     } catch {
       // 错误提示已由请求层统一弹出
     }
@@ -489,81 +563,76 @@
     try {
       await fetchDeleteNoticeTemplate(row.id)
       ElMessage.success('已删除')
-      loadTemplates()
+      templateRefresh()
     } catch {
       // 错误提示已由请求层统一弹出
     }
   }
 
   onMounted(async () => {
-    await loadTypes()
-    await Promise.all([loadChannels(), loadTemplates(), loadLogs()])
+    try {
+      types.value = (await fetchGetNoticeTypes()) ?? []
+    } catch {
+      types.value = []
+    }
   })
 </script>
 
 <style lang="scss" scoped>
   .notice-card {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+
     :deep(.el-card__body) {
-      padding: 8px 20px 20px;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0 16px 12px;
     }
   }
 
   .notice-tabs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+
     :deep(.el-tabs__header) {
-      margin-bottom: 16px;
+      margin-bottom: 10px;
+    }
+
+    :deep(.el-tabs__content) {
+      flex: 1;
+      min-height: 0;
+    }
+
+    :deep(.el-tab-pane) {
+      height: 100%;
     }
   }
 
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 12px;
-
-    .w-44 {
-      width: 176px;
-    }
-
-    .w-40 {
-      width: 160px;
-    }
-
-    .w-36 {
-      width: 144px;
-    }
-  }
-
-  .pager {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-  }
-
-  .log-detail {
-    padding: 8px 16px;
-  }
-
-  .log-label {
-    margin-bottom: 4px;
-    font-size: 12px;
+  .tab-count {
+    padding: 0 5px;
+    margin-left: 4px;
+    font-size: 11px;
+    line-height: 16px;
     color: var(--el-text-color-secondary);
+    background: var(--el-fill-color);
+    border-radius: 8px;
   }
 
-  .log-pre {
-    max-height: 220px;
-    padding: 10px 12px;
-    margin: 0;
-    overflow: auto;
-    font-size: 12px;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    word-break: break-all;
-    background: var(--el-fill-color-lighter);
-    border-radius: 6px;
+  // 每个 tab 内部：搜索栏 + 工具条固定，表格占满剩余高度
+  .pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
 
-    &.is-error {
-      color: var(--el-color-danger);
-    }
+  .pane-table {
+    flex: 1;
+    min-height: 0;
   }
 </style>
