@@ -21,6 +21,10 @@ func Register() {
 	apiLogController := controller.NewApiLogController()
 	smsChannelController := controller.NewInfraSmsChannelController()
 	smsTemplateController := controller.NewInfraSmsTemplateController()
+	jobController := controller.NewJobController()
+	monitorController := controller.NewMonitorController()
+	noticeController := controller.NewNoticeController()
+	generatorController := controller.NewGeneratorController()
 
 	facades.Route().Prefix(Prefix).Group(func(r route.Router) {
 		auth := r.Middleware(&baseMiddleware.TokenAuth{})
@@ -64,6 +68,53 @@ func Register() {
 		perm("infra:region:list").Get("/regions", regionController.Index)
 		perm("infra:region:sync").Middleware(operate("基础设施", "同步行政区划")).
 			Post("/regions/sync", regionController.Sync)
+
+		// 系统监控：只读聚合接口，供后台看进程 / 依赖 / 请求指标
+		perm("infra:monitor:list").Get("/monitor/overview", monitorController.Overview)
+
+		// 代码生成：读表结构 → 预览 → 落盘（写文件单独授权）
+		perm("infra:generator:list").Get("/generator/tables", generatorController.Tables)
+		perm("infra:generator:list").Get("/generator/tables/{table}/columns", generatorController.Columns)
+		perm("infra:generator:list").Post("/generator/preview", generatorController.Preview)
+		perm("infra:generator:write").Middleware(operate("基础设施", "生成代码")).
+			Post("/generator/generate", generatorController.Generate)
+
+		// 消息通知：渠道与模板可配置，发送与测试单独授权
+		perm("infra:notice:list").Get("/notice/types", noticeController.Types)
+		perm("infra:notice:list").Get("/notice-channels", noticeController.Channels)
+		perm("infra:notice:list").Get("/notice-templates", noticeController.Templates)
+		perm("infra:notice:list").Get("/notice-logs", noticeController.Logs)
+		perm("infra:notice:update").Middleware(operate("消息通知", "新增通知渠道")).
+			Post("/notice-channels", noticeController.StoreChannel)
+		perm("infra:notice:update").Middleware(operate("消息通知", "编辑通知渠道")).
+			Put("/notice-channels/{id}", noticeController.UpdateChannel)
+		perm("infra:notice:delete").Middleware(operate("消息通知", "删除通知渠道")).
+			Delete("/notice-channels/{id}", noticeController.DestroyChannel)
+		perm("infra:notice:update").Middleware(operate("消息通知", "新增通知模板")).
+			Post("/notice-templates", noticeController.StoreTemplate)
+		perm("infra:notice:update").Middleware(operate("消息通知", "编辑通知模板")).
+			Put("/notice-templates/{id}", noticeController.UpdateTemplate)
+		perm("infra:notice:delete").Middleware(operate("消息通知", "删除通知模板")).
+			Delete("/notice-templates/{id}", noticeController.DestroyTemplate)
+		perm("infra:notice:send").Middleware(operate("消息通知", "测试发送")).
+			Post("/notice-channels/{id}/test", noticeController.TestChannel)
+		perm("infra:notice:send").Middleware(operate("消息通知", "发送通知")).
+			Post("/notices/send", noticeController.Send)
+
+		// 定时任务：逻辑在代码里注册，这里只管启停、频率、手动执行与日志
+		perm("infra:job:list").Get("/jobs", jobController.Index)
+		perm("infra:job:list").Get("/jobs/handlers", jobController.Handlers)
+		perm("infra:job:list").Get("/jobs/logs", jobController.Logs)
+		perm("infra:job:update").Middleware(operate("基础设施", "新增定时任务")).
+			Post("/jobs", jobController.Store)
+		perm("infra:job:update").Middleware(operate("基础设施", "编辑定时任务")).
+			Put("/jobs/{id}", jobController.Update)
+		perm("infra:job:update").Middleware(operate("基础设施", "启停定时任务")).
+			Put("/jobs/{id}/status", jobController.Toggle)
+		perm("infra:job:run").Middleware(operate("基础设施", "手动执行任务")).
+			Post("/jobs/{id}/run", jobController.Run)
+		perm("infra:job:delete").Middleware(operate("基础设施", "删除定时任务")).
+			Delete("/jobs/{id}", jobController.Destroy)
 
 		perm("infra:api-log:list").Get("/api-logs/access", apiLogController.Access)
 		perm("infra:api-log:list").Get("/api-logs/error", apiLogController.Error)

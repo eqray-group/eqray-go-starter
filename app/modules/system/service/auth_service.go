@@ -29,6 +29,10 @@ type LoginInput struct {
 }
 
 // AuthService 负责后台登录认证（docs 9.1）。
+// loginSceneAdmin 是后台登录失败计数的场景标识，与 C 端隔离。
+const loginSceneAdmin = "admin"
+
+// AuthService 负责后台账号的登录、令牌续期与密码修改。
 type AuthService struct {
 	users      *repository.UserRepository
 	permission *PermissionService
@@ -45,6 +49,12 @@ func NewAuthService() *AuthService {
 // Login 依次校验验证码、账号密码与账号状态，通过后签发令牌并刷新登录信息。
 // 账号不存在与密码错误返回同一个错误码，避免被用来枚举账号。
 func (s *AuthService) Login(ctx context.Context, in LoginInput) (*LoginResult, error) {
+	// 先看是否已被锁定：连续失败达阈值后，即使密码正确也要求等窗口过期
+	if locked, remain := baseAuth.LoginLocked(ctx, loginSceneAdmin, in.Username); locked {
+		s.recordLogin(ctx, in, 0, baseEnums.LoginResultFail)
+		return nil, baseErrs.WithMsg(baseErrs.TooManyRequests, baseAuth.LoginLockedMessage(remain))
+	}
+
 	if !baseAuth.VerifyCaptcha(in.CaptchaID, in.CaptchaCode) {
 		s.recordLogin(ctx, in, 0, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemCaptchaWrong)
@@ -55,13 +65,19 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*LoginResult, e
 		return nil, err
 	}
 	if user == nil {
+		// 账号不存在与密码错误同样计数，避免通过响应差异枚举账号
+		baseAuth.RecordLoginFailure(ctx, loginSceneAdmin, in.Username)
 		s.recordLogin(ctx, in, 0, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemLoginFailed)
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(in.Password)) != nil {
+		baseAuth.RecordLoginFailure(ctx, loginSceneAdmin, in.Username)
 		s.recordLogin(ctx, in, user.ID, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemLoginFailed)
 	}
+
+	// 登录成功清空失败计数，避免历史失败影响后续
+	baseAuth.ClearLoginFailure(ctx, loginSceneAdmin, in.Username)
 	if user.Status != baseEnums.CommonStatusEnabled {
 		s.recordLogin(ctx, in, user.ID, baseEnums.LoginResultFail)
 		return nil, baseErrs.New(systemErrs.SystemAccountDisabled)

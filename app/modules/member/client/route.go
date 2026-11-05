@@ -24,11 +24,14 @@ func Register() {
 	facades.Route().Prefix(Prefix).Group(func(r route.Router) {
 		// ---------- 免登录 ----------
 		// 登录、续期与授权地址不需要令牌
+		// 验证码与登录单独限流，防止短信轰炸与撞库
+		loginLimit := r.Middleware(&baseMiddleware.RateLimit{Name: "member-login", Limit: facades.Config().GetInt("security.rate_limit.login_per_minute", 10)})
+		loginLimit.Post("/auth/sms-code", authController.SmsCode)
+		loginLimit.Post("/auth/sms-login", authController.SmsLogin)
+		loginLimit.Post("/auth/social/login", authController.SocialLogin)
+		loginLimit.Post("/auth/social-bind-login", authController.SocialBindLogin)
+
 		r.Get("/auth/social/{type}/authorize-url", authController.AuthorizeURL)
-		r.Post("/auth/social/login", authController.SocialLogin)
-		r.Post("/auth/sms-code", authController.SmsCode)
-		r.Post("/auth/sms-login", authController.SmsLogin)
-		r.Post("/auth/social-bind-login", authController.SocialBindLogin)
 		r.Post("/auth/refresh", authController.Refresh)
 
 		// ---------- 需要会员令牌 ----------

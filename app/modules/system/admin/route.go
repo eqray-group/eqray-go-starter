@@ -23,8 +23,11 @@ func Register() {
 	dashboardController := controller.NewDashboardController()
 
 	facades.Route().Prefix(Prefix).Group(func(r route.Router) {
-		r.Get("/auth/captcha", authController.Captcha)
-		r.Post("/auth/login", authController.Login)
+		// 登录相关接口单独限流：验证码与登录尝试是暴力破解的主要入口
+		loginLimit := r.Middleware(&baseMiddleware.RateLimit{Name: "login", Limit: facades.Config().GetInt("security.rate_limit.login_per_minute", 10)})
+		loginLimit.Get("/auth/captcha", authController.Captcha)
+		loginLimit.Post("/auth/login", authController.Login)
+
 		// 刷新与登出不挂鉴权：访问令牌过期后仍要能续期，登出也允许用已失效的令牌调用
 		r.Post("/auth/refresh", authController.Refresh)
 		r.Post("/auth/logout", authController.Logout)

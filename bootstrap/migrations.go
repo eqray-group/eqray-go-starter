@@ -77,5 +77,11 @@ func Migrations() []schema.Migration {
 		&migrations.M20261104000002CreateInfraRegionTable{},
 		&migrations.M20261104000003CreatePayWalletTable{},
 		&migrations.M20261104000004CreatePayWalletTransactionTable{},
+		&migrations.M20261105000001CreateInfraJobTables{},
+		&migrations.M20261105000002SeedInfraJobMenu{},
+		&migrations.M20261105000003SeedInfraMonitorMenu{},
+		&migrations.M20261105000004CreateInfraNoticeTables{},
+		&migrations.M20261105000005SeedInfraNoticeMenu{},
+		&migrations.M20261105000006SeedInfraGeneratorMenu{},
 	}
 }

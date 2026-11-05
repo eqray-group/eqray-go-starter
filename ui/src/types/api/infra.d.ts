@@ -330,5 +330,299 @@ declare namespace Api {
       total: number
       stats: RegionStats
     }
+
+    /** 定时任务 */
+    interface JobItem {
+      id: string
+      name: string
+      /** 处理器标识（代码注册） */
+      handler: string
+      /** cron 表达式（5 段） */
+      cron: string
+      /** 0 停用 / 1 启用 */
+      status: number
+      remark: string
+      nextRunAt: string | null
+      lastRunAt: string | null
+      /** 上次结果：0 失败 / 1 成功 */
+      lastStatus: number
+      /** 上次耗时（毫秒） */
+      lastDuration: number
+      lastOutput: string
+      updatedAt?: string
+    }
+
+    interface JobList {
+      list: JobItem[]
+      total: number
+    }
+
+    interface JobSearchParams {
+      keyword?: string
+      status?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 新增任务时可选的处理器 */
+    interface JobHandlerItem {
+      key: string
+      name: string
+      description: string
+      defaultCron: string
+    }
+
+    interface JobSaveParams {
+      name: string
+      /** 编辑时忽略 */
+      handler?: string
+      cron: string
+      status: number
+      remark?: string
+    }
+
+    /** 任务执行日志 */
+    interface JobLogItem {
+      id: string
+      jobId: string
+      jobName: string
+      handler: string
+      /** cron / manual */
+      trigger: string
+      /** 0 失败 / 1 成功 */
+      status: number
+      startedAt: string
+      finishedAt: string
+      /** 耗时（毫秒） */
+      duration: number
+      output: string
+      error: string
+    }
+
+    interface JobLogList {
+      list: JobLogItem[]
+      total: number
+    }
+
+    interface JobLogSearchParams {
+      jobId?: string
+      status?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 依赖探测结果 */
+    interface MonitorHealth {
+      ok: boolean
+      /** 探测耗时（毫秒） */
+      latencyMs: number
+      /** 失败原因，正常时为空 */
+      message: string
+    }
+
+    /** 最近一条接口错误日志 */
+    interface MonitorErrorItem {
+      id: string
+      name: string
+      requestUrl: string
+      message: string
+      createdAt: string
+    }
+
+    /** 系统监控总览 */
+    interface MonitorOverview {
+      app: {
+        goVersion: string
+        uptimeSeconds: number
+        goroutines: number
+        cpuCores: number
+      }
+      memory: {
+        allocMB: number
+        heapInuseMB: number
+        sysMB: number
+        numGC: number
+        heapObjects: number
+      }
+      db: MonitorHealth
+      cache: MonitorHealth
+      request: {
+        total: number
+        errors: number
+        slow: number
+        avgDurationMs: number
+      }
+      recentErrors: MonitorErrorItem[]
+      collectedAt: string
+    }
+
+    /** 通知渠道配置字段选项 */
+    interface NoticeFieldOption {
+      label: string
+      value: string
+    }
+
+    /** 通知渠道配置字段定义（后端下发，前端动态渲染） */
+    interface NoticeFieldSchema {
+      key: string
+      label: string
+      /** text / password / number / select */
+      type: string
+      required: boolean
+      placeholder?: string
+      desc?: string
+      options?: NoticeFieldOption[]
+    }
+
+    /** 通知渠道类型定义 */
+    interface NoticeTypeSchema {
+      type: string
+      name: string
+      desc: string
+      /** 接收目标在页面上的叫法 */
+      targetLabel: string
+      fields: NoticeFieldSchema[]
+    }
+
+    /** 通知渠道 */
+    interface NoticeChannelItem {
+      id: string
+      name: string
+      /** email / wecom / dingtalk */
+      type: string
+      /** 配置 JSON 文本 */
+      config: string
+      status: number
+      remark: string
+      createdAt?: string
+      updatedAt?: string
+    }
+
+    interface NoticeChannelList {
+      list: NoticeChannelItem[]
+      total: number
+    }
+
+    interface NoticeChannelSaveParams {
+      name: string
+      type: string
+      config: Record<string, string>
+      status: number
+      remark?: string
+    }
+
+    /** 通知模板 */
+    interface NoticeTemplateItem {
+      id: string
+      code: string
+      name: string
+      type: string
+      title: string
+      content: string
+      status: number
+      remark: string
+      updatedAt?: string
+    }
+
+    interface NoticeTemplateList {
+      list: NoticeTemplateItem[]
+      total: number
+    }
+
+    interface NoticeTemplateSaveParams {
+      code?: string
+      name: string
+      type: string
+      title?: string
+      content: string
+      status: number
+      remark?: string
+    }
+
+    /** 通知发送记录 */
+    interface NoticeLogItem {
+      id: string
+      channelId: string
+      channelName: string
+      type: string
+      templateCode: string
+      target: string
+      title: string
+      content: string
+      /** 0 失败 / 1 成功 */
+      status: number
+      error: string
+      duration: number
+      creator: string
+      createdAt: string
+    }
+
+    interface NoticeLogList {
+      list: NoticeLogItem[]
+      total: number
+    }
+
+    interface NoticeSearchParams {
+      keyword?: string
+      type?: string
+      status?: number
+      pageNo?: number
+      pageSize?: number
+    }
+
+    /** 通用发送入参 */
+    interface NoticeSendParams {
+      channelId?: string
+      type?: string
+      templateCode?: string
+      target?: string
+      title?: string
+      content?: string
+      variables?: Record<string, string>
+    }
+
+    /** 代码生成：可选表 */
+    interface GeneratorTable {
+      name: string
+      comment: string
+      rows: number
+    }
+
+    /** 代码生成：字段元信息 */
+    interface GeneratorColumn {
+      name: string
+      type: string
+      columnType: string
+      nullable: boolean
+      primaryKey: boolean
+      autoIncrement: boolean
+      comment: string
+      goType: string
+      fieldName: string
+      jsonName: string
+      /** input / number / textarea / switch / datetime */
+      formType: string
+    }
+
+    /** 代码生成：一个输出文件 */
+    interface GeneratorFile {
+      path: string
+      language: string
+      /** false 表示仅预览（如路由片段） */
+      writable: boolean
+      content: string
+    }
+
+    interface GeneratorParams {
+      table: string
+      module: string
+      pascal?: string
+      overwrite?: boolean
+    }
+
+    interface GeneratorResult {
+      written: string[]
+      skipped: string[]
+    }
   }
 }

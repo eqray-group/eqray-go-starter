@@ -104,6 +104,7 @@ const getErrorMessage = (status: number): string => {
     [ApiStatus.notFound]: 'httpMsg.notFound',
     [ApiStatus.methodNotAllowed]: 'httpMsg.methodNotAllowed',
     [ApiStatus.requestTimeout]: 'httpMsg.requestTimeout',
+    [ApiStatus.tooManyRequests]: 'httpMsg.tooManyRequests',
     [ApiStatus.internalServerError]: 'httpMsg.internalServerError',
     [ApiStatus.badGateway]: 'httpMsg.badGateway',
     [ApiStatus.serviceUnavailable]: 'httpMsg.serviceUnavailable',

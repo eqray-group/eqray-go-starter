@@ -5,6 +5,7 @@
     "notFound": "The requested resource does not exist",
     "methodNotAllowed": "Request method not allowed",
     "requestTimeout": "Request timeout, please try again later",
+    "tooManyRequests": "Too many requests, please try again later",
     "internalServerError": "Internal server error, please try again later",
     "badGateway": "Bad gateway error, please try again later",
     "serviceUnavailable": "Service temporarily unavailable, please try again later",

@@ -19,6 +19,9 @@ import (
 )
 
 func Boot() contractsFoundation.Application {
+	// 定时任务处理器必须先注册，调度器每分钟按 infra_job 表里的 handler 查找
+	registerJobs()
+
 	return foundation.Setup().
 		WithMigrations(Migrations).
 		WithRouting(func() {
@@ -67,12 +70,16 @@ func Boot() contractsFoundation.Application {
 			routes.Modules()
 		}).
 		WithProviders(Providers).
+		WithCommands(Commands).
 		WithSchedule(Schedule).
 		WithEvents(Events).
 		WithConfig(config.Boot).
-		// API 访问 / 错误日志：全局中间件，覆盖所有模块的请求
+		// 全局中间件：接口限流在前，日志在后，被限流的请求也能留下访问记录
 		WithMiddleware(func(handler configuration.Middleware) {
-			handler.Append(&infraMiddleware.RequestLog{})
+			handler.Append(
+				&baseMiddleware.RateLimit{Name: "api"},
+				&infraMiddleware.RequestLog{},
+			)
 		}).
 		Create()
 }

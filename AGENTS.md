@@ -483,6 +483,42 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
   pay 对它一无所知；上线可整体删除（连同 `demo_order` 表迁移与本文件相关段落）。
 - 错误码占用模块号 `004`：`1_004_001_*` 渠道、`1_004_002_*` 订单、`1_004_003_*` 退款、`1_004_004_*` C 端支付。
 
+- **定时任务（可视化）**：表 `infra_job` / `infra_job_log`；任务逻辑在 `bootstrap/jobs.go` 用
+  `infraJob.Register(...)` 注册，库里只存 `handler + cron + 启停`。`bootstrap/schedule.go` 只挂一个
+  每分钟分发器（`OnOneServer`），到点任务在 `JobService.DispatchDue` 里执行并写日志。
+  后台「基础设施 → 定时任务」（`/infra/job`，权限 `infra:job:list/update/delete/run`）可改频率、启停、
+  手动执行（同步返回日志）。**新增任务 = 注册 Definition + 后台新建记录**，`handler` 全局唯一；
+  日志保留 30 天，由分发器每天 04:00 清理。
+- **接口限流**：`base/middleware/RateLimit`，按「登录用户 ID，未登录取 IP」做固定窗口计数；
+  全局默认 240 次/分（`security.rate_limit.per_minute`），登录 / 验证码单独 10 次/分
+  （`login_per_minute`），超限返回 HTTP 429，前端提示「请求过于频繁」。缓存不可用时放行，避免限流组件打挂接口。
+- **登录安全**：连续失败达 `security.login.max_fail`（默认 5）次后锁定 `lock_minutes`（默认 15 分钟），
+  实现见 `base/auth/login_guard.go`，后台登录已接入（账号不存在也计数，避免枚举）；登录成功清零。
+- **权限点自检**：`go run . artisan perm:check` 扫描 `app/modules/**` 里的 `perm("...")` 与
+  `system_menu.permission` 双向比对，列出「代码在用但菜单没注册」与「菜单多出来的」。
+  新增接口后跑一次，能提前发现线上 403。
+- **系统监控**：`GET /api/v1/infra/monitor/overview`（权限 `infra:monitor:list`，页面 `/infra/monitor`），
+  一次返回进程（Go 版本 / 运行时长 / 协程 / CPU 核数）、内存（Alloc / HeapInuse / Sys / GC）、
+  DB 与缓存探测延迟、近 24h 请求量与失败 / 慢请求 / 平均耗时、最近 10 条接口错误日志。
+  只做当前值采集，不做时序存储；单项探测失败不影响整体返回，页面 30s 自动刷新。
+- **消息通知**：三张表 `infra_notice_channel`（渠道，配置以 JSON 文本存 `config`）、
+  `infra_notice_template`（模板，`code` 唯一，内容支持 `{{变量}}`）、`infra_notice_log`（发送记录，只追加）。
+  支持三类渠道：`email`（自建 SMTP，支持 SSL / STARTTLS / 明文）、`wecom`（企业微信群机器人）、
+  `dingtalk`（钉钉群机器人，填 `secret` 时按时间戳加签）。渠道字段定义由
+  `service.NoticeTypes()` 下发，前端动态渲染表单；**新增渠道类型只需在 NoticeTypes 加定义 + sendNotice 加分支**。
+  接口：`GET /infra/notice/types`、`GET /infra/notice-channels|notice-templates|notice-logs`、
+  `POST|PUT|DELETE /infra/notice-channels[/{id}]`、`POST|PUT|DELETE /infra/notice-templates[/{id}]`、
+  `POST /infra/notice-channels/{id}/test`、`POST /infra/notices/send`（按模板编码 + 变量发送）。
+  权限：`infra:notice:list / update / delete / send`；**发送成功失败都写记录**，失败原因直接落 `error` 字段。
+- **代码生成**：`/infra/generator`（`infra:generator:list` 查看 / 预览，`infra:generator:write` 落盘）。
+  读 `information_schema`（用 `DATABASE()` 限定当前库），按表结构生成
+  `model / repository / service / admin/request / admin/controller` 五件套，以及
+  `ui/src/api/{module}/{name}.ts`、`ui/src/views/{module}/{name}/index.vue`（含增删改查弹窗）。
+  **路由片段只预览不落盘**；已存在文件默认跳过，`overwrite=true` 才覆盖。
+  命名：`demo_order` → 文件名 `demo_order_*`、结构体 `DemoOrder`、默认模块取表名首段。
+  模板保证「表里没有 creator / updated_at 时不生成对应赋值」，有单测（`generator_service_test.go`）用
+  `go/parser` 校验产出语法合法；**生成后仍需手改**：路由注册、权限点与菜单迁移、搜索条件、关联字段。
+
 ### 4.13 注释规范
 
 **每个函数 / 方法都必须写注释**，说清「做什么 + 关键约束 + 入参 + 返回什么」，
