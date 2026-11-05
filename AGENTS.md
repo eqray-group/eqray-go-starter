@@ -513,7 +513,9 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
 - **代码生成**：`/infra/generator`（`infra:generator:list` 查看 / 预览，`infra:generator:write` 落盘）。
   读 `information_schema`（用 `DATABASE()` 限定当前库），按表结构生成
   `model / repository / service / admin/request / admin/controller` 五件套，以及
-  `ui/src/api/{module}/{name}.ts`、`ui/src/views/{module}/{name}/index.vue`（含增删改查弹窗）。
+  `ui/src/types/api/{module}/{name}.d.ts`（按表分文件，namespace 自动合并）、
+  `ui/src/api/{module}/{name}.ts`、`ui/src/views/{module}/{name}/index.vue`（搜索 + ArtTable + useTable）
+  与 `.../modules/{name}-form-dialog.vue`（新增 / 编辑表单，**列表页不内嵌 ElDialog**）。
   **路由片段只预览不落盘**；已存在文件默认跳过，`overwrite=true` 才覆盖。
   命名：`demo_order` → 文件名 `demo_order_*`、结构体 `DemoOrder`、默认模块取表名首段。
   模板保证「表里没有 creator / updated_at 时不生成对应赋值」，有单测（`generator_service_test.go`）用

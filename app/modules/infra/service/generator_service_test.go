@@ -37,6 +37,35 @@ func TestBuildFilesCompiles(t *testing.T) {
 			t.Fatalf("%s 语法不合法：%v\n%s", file.Path, err, file.Content)
 		}
 	}
+
+	// 前端必须拆成「列表页 + 表单弹窗」，列表页里不再内嵌 ElDialog
+	byPath := make(map[string]string, len(files))
+	for _, file := range files {
+		byPath[file.Path] = file.Content
+	}
+
+	indexPath := "ui/src/views/demo/demo_order/index.vue"
+	dialogPath := "ui/src/views/demo/demo_order/modules/demo_order-form-dialog.vue"
+	index, ok := byPath[indexPath]
+	if !ok {
+		t.Fatalf("缺少列表页：%s", indexPath)
+	}
+	dialog, ok := byPath[dialogPath]
+	if !ok {
+		t.Fatalf("缺少表单弹窗：%s", dialogPath)
+	}
+	if strings.Contains(index, "<ElDialog") {
+		t.Fatal("列表页不应内嵌表单弹窗")
+	}
+	if !strings.Contains(index, "DemoOrderFormDialog") {
+		t.Fatal("列表页未引用表单弹窗组件")
+	}
+	if !strings.Contains(dialog, "<ElDialog") || !strings.Contains(dialog, "fetchUpdateDemoOrder") {
+		t.Fatal("表单弹窗内容不完整")
+	}
+	if _, ok := byPath["ui/src/types/api/demo/demo_order.d.ts"]; !ok {
+		t.Fatal("缺少前端类型声明文件")
+	}
 }
 
 // TestBuildFilesWithoutAuditColumns 校验没有审计字段的表不会生成引用 Creator 等不存在的字段。

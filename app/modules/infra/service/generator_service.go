@@ -303,6 +303,12 @@ func (s *GeneratorService) buildFiles(in GeneratorInput, columns []ColumnInfo) [
 			Content:  renderRouteSnippet(in),
 		},
 		{
+			Path:     "ui/src/types/api/" + in.Module + "/" + name + ".d.ts",
+			Language: "ts",
+			Writable: true,
+			Content:  renderFrontendTypes(in, columns),
+		},
+		{
 			Path:     "ui/src/api/" + in.Module + "/" + name + ".ts",
 			Language: "ts",
 			Writable: true,
@@ -313,6 +319,12 @@ func (s *GeneratorService) buildFiles(in GeneratorInput, columns []ColumnInfo) [
 			Language: "vue",
 			Writable: true,
 			Content:  renderFrontendPage(in, columns),
+		},
+		{
+			Path:     "ui/src/views/" + in.Module + "/" + name + "/modules/" + name + "-form-dialog.vue",
+			Language: "vue",
+			Writable: true,
+			Content:  renderFrontendFormDialog(in, columns),
 		},
 	}
 }
@@ -601,7 +613,7 @@ func (r *@@PASCAL@@Repository) Paginate(ctx context.Context, filter @@PASCAL@@Fi
 	}
 
 	if err := r.applyFilter(facades.DB().WithContext(ctx).Table(model.@@PASCAL@@Table), filter).
-		OrderBy("@@ORDER_BY@@").
+		OrderBy("@@ORDER_BY@@", "desc").
 		Offset(uint64((pageNo - 1) * pageSize)).
 		Limit(uint64(pageSize)).
 		Get(&list); err != nil {
@@ -668,16 +680,18 @@ func renderInputFields(columns []ColumnInfo) string {
 	return body.String()
 }
 
-// orderByColumn 选择排序列：优先自增主键，其次 created_at。
+// orderByColumn 选择排序列：优先自增主键，其次 id。
+// 只返回列名，方向由调用处的 OrderBy 第二个参数给出（Goravel 的 OrderBy 会给列名补默认 ASC，
+// 把方向写进列名会生成 `ORDER BY `status desc` ASC` 这类非法 SQL）。
 // 入参 columns 为全部字段；返回列名。
 func orderByColumn(columns []ColumnInfo) string {
 	for _, col := range columns {
 		if col.PrimaryKey {
-			return col.Name + " desc"
+			return col.Name
 		}
 	}
 
-	return "id desc"
+	return "id"
 }
 
 // renderService 生成 service 文件。
@@ -1027,7 +1041,7 @@ func renderFrontendAPI(in GeneratorInput) string {
 	return fmt.Sprintf(`import request from '@/utils/http'
 
 // 分页查询
-export function fetchGet%sList(params: { keyword?: string; pageNo?: number; pageSize?: number }) {
+export function fetchGet%sList(params: Api.%s.%sSearchParams) {
   return request.get<{ list: Api.%s.%sItem[]; total: number }>({
     url: '/api/v1/%s/%ss',
     params
@@ -1056,183 +1070,192 @@ export function fetchDelete%s(id: string) {
     url: '/api/v1/%s/%ss/' + id
   })
 }
-`, pascal, namespace, pascal, in.Module, name,
+`, pascal, namespace, pascal, namespace, pascal, in.Module, name,
 		pascal, namespace, pascal, in.Module, name,
 		pascal, namespace, pascal, in.Module, name,
 		pascal, in.Module, name)
 }
 
-// renderFrontendPage 生成列表页（含新增 / 编辑弹窗，字段按表结构渲染）。
+// tsTypeOf 把字段映射成前端 TS 类型：主键与外键用 string，避免 JS 数字精度丢失。
+// 入参 col 为字段；返回 TS 类型。
+func tsTypeOf(col ColumnInfo) string {
+	if col.PrimaryKey || strings.HasSuffix(col.Name, "_id") {
+		return "string"
+	}
+
+	switch strings.ToLower(col.Type) {
+	case "bigint", "int", "smallint", "mediumint", "tinyint", "decimal", "numeric", "float", "double":
+		return "number"
+	}
+
+	return "string"
+}
+
+// renderFrontendTypes 生成该表的前端类型声明（按表分文件，避免与已有模块类型冲突）。
+func renderFrontendTypes(in GeneratorInput, columns []ColumnInfo) string {
+	var fields strings.Builder
+	for _, col := range columns {
+		fmt.Fprintf(&fields, "      /** %s */\n      %s: %s\n", goDoc(col), col.JsonName, tsTypeOf(col))
+	}
+
+	tpl := `// @@TABLE@@ 的类型定义（由代码生成器生成）
+// 每个表一个文件，namespace 会与同模块的其它表合并；已存在则跳过，不会覆盖手改内容。
+declare namespace Api {
+  namespace @@NS@@ {
+    /** @@TABLE@@ 记录 */
+    interface @@PASCAL@@Item {
+@@ITEM_FIELDS@@    }
+
+    /** @@TABLE@@ 列表查询参数 */
+    interface @@PASCAL@@SearchParams {
+      keyword?: string
+      pageNo?: number
+      pageSize?: number
+    }
+  }
+}
+`
+
+	return replaceTokens(tpl, map[string]string{
+		"@@TABLE@@":       in.Table,
+		"@@NS@@":          pascalCase(in.Module),
+		"@@PASCAL@@":      in.Pascal,
+		"@@ITEM_FIELDS@@": fields.String(),
+	})
+}
+
+// renderFrontendPage 生成列表页：搜索 + ArtTable + 操作，表单在独立弹窗组件里。
+// 入参 in 为生成参数、columns 为字段；返回页面内容。
 func renderFrontendPage(in GeneratorInput, columns []ColumnInfo) string {
-	fields := editableColumns(columns)
-	formItems := make([]string, 0, len(fields))
-	formModel := make([]string, 0, len(fields))
-	tableCols := make([]string, 0, len(fields))
+	name := pascalToSnake(in.Pascal)
 
-	for _, col := range fields {
-		switch col.FormType {
-		case "number":
-			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
-        <ElInputNumber v-model="form.%s" :min="0" controls-position="right" class="w-full" />
-      </ElFormItem>`, goDoc(col), col.JsonName, col.JsonName))
-			formModel = append(formModel, fmt.Sprintf("    %s: 0,", col.JsonName))
-		case "textarea":
-			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
-        <ElInput v-model="form.%s" type="textarea" :rows="3" />
-      </ElFormItem>`, goDoc(col), col.JsonName, col.JsonName))
-			formModel = append(formModel, fmt.Sprintf("    %s: '',", col.JsonName))
-		case "switch":
-			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
-        <ElSwitch v-model="form.%s" :active-value="1" :inactive-value="0" />
-      </ElFormItem>`, goDoc(col), col.JsonName, col.JsonName))
-			formModel = append(formModel, fmt.Sprintf("    %s: 1,", col.JsonName))
-		default:
-			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
-        <ElInput v-model="form.%s" maxlength="255" />
-      </ElFormItem>`, goDoc(col), col.JsonName, col.JsonName))
-			formModel = append(formModel, fmt.Sprintf("    %s: '',", col.JsonName))
-		}
-
-		tableCols = append(tableCols, fmt.Sprintf(`        <ElTableColumn prop="%s" label="%s" min-width="140" show-overflow-tooltip />`,
+	tableCols := make([]string, 0, len(columns))
+	for _, col := range editableColumns(columns) {
+		tableCols = append(tableCols, fmt.Sprintf("        { prop: '%s', label: '%s', minWidth: 140 },",
 			col.JsonName, goDoc(col)))
 	}
 
-	tpl := `<!-- @@TABLE@@ 列表页：由代码生成器生成，字段按表结构渲染 -->
+	tpl := `<!-- @@TABLE@@ 列表页：由代码生成器生成，表单在 modules/@@NAME@@-form-dialog.vue -->
 <template>
   <div class="@@NAME@@-page art-full-height">
+    <ArtSearchBar
+      v-model="searchForm"
+      :items="searchItems"
+      :rules="{}"
+      @reset="resetSearchParams"
+      @search="handleSearch"
+    />
+
     <ElCard class="art-table-card">
-      <div class="toolbar">
-        <ElInput v-model="keyword" placeholder="关键字" clearable class="w-52" @keyup.enter="handleSearch" />
-        <ElButton @click="handleSearch">查询</ElButton>
-        <ElButton type="primary" @click="showDialog()">新增</ElButton>
-      </div>
-
-      <ElTable v-loading="loading" :data="list" border>
-@@TABLE_COLS@@
-        <ElTableColumn label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <ElButton link type="primary" @click="showDialog(row)">编辑</ElButton>
-            <ElButton link type="danger" @click="handleDelete(row)">删除</ElButton>
-          </template>
-        </ElTableColumn>
-        <template #empty>
-          <ElEmpty description="暂无数据" :image-size="90" />
+      <ArtTableHeader v-model:columns="columnChecks" :loading="loading" @refresh="refreshData">
+        <template #left>
+          <ElButton type="primary" @click="showDialog('add')" v-ripple>新增</ElButton>
         </template>
-      </ElTable>
+      </ArtTableHeader>
 
-      <div class="pager">
-        <ElPagination
-          v-model:current-page="pageNo"
-          v-model:page-size="pageSize"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          @current-change="loadList"
-          @size-change="handleSearch"
-        />
-      </div>
+      <ArtTable
+        :loading="loading"
+        :data="data"
+        :columns="columns"
+        :pagination="pagination"
+        @pagination:size-change="handleSizeChange"
+        @pagination:current-change="handleCurrentChange"
+      />
     </ElCard>
 
-    <ElDialog v-model="dialogVisible" :title="form.id ? '编辑' : '新增'" width="560px" align-center>
-      <ElForm ref="formRef" :model="form" label-position="top">
-@@FORM_ITEMS@@
-      </ElForm>
-      <template #footer>
-        <ElButton @click="dialogVisible = false">取消</ElButton>
-        <ElButton type="primary" :loading="submitting" @click="handleSubmit">提交</ElButton>
-      </template>
-    </ElDialog>
+    <@@PASCAL@@FormDialog
+      v-model:visible="dialogVisible"
+      :type="dialogType"
+      :form-data="currentRow"
+      @success="refreshData"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-  import {
-    ElButton,
-    ElCard,
-    ElDialog,
-    ElEmpty,
-    ElForm,
-    ElFormItem,
-    ElInput,
-    ElInputNumber,
-    ElMessage,
-    ElMessageBox,
-    ElPagination,
-    ElSwitch,
-    ElTable,
-    ElTableColumn
-  } from 'element-plus'
-  import {
-    fetchCreate@@PASCAL@@,
-    fetchDelete@@PASCAL@@,
-    fetchGet@@PASCAL@@List,
-    fetchUpdate@@PASCAL@@
-  } from '@/api/@@MODULE@@/@@NAME@@'
+  import { h } from 'vue'
+  import { ElButton, ElCard, ElMessage, ElMessageBox } from 'element-plus'
+  import { useTable } from '@/hooks/core/useTable'
+  import { fetchDelete@@PASCAL@@, fetchGet@@PASCAL@@List } from '@/api/@@MODULE@@/@@NAME@@'
+  import @@PASCAL@@FormDialog from './modules/@@NAME@@-form-dialog.vue'
 
   defineOptions({ name: '@@PASCAL@@Page' })
 
-  const loading = ref(false)
-  const submitting = ref(false)
-  const list = ref<any[]>([])
-  const total = ref(0)
-  const pageNo = ref(1)
-  const pageSize = ref(10)
-  const keyword = ref('')
+  type Item = Api.@@NS@@.@@PASCAL@@Item
+  type DialogType = 'add' | 'edit'
+
+  const searchForm = ref<Api.@@NS@@.@@PASCAL@@SearchParams>({})
+  const searchItems = [
+    {
+      label: '关键字',
+      key: 'keyword',
+      type: 'input',
+      placeholder: '请输入关键字',
+      clearable: true
+    }
+  ]
 
   const dialogVisible = ref(false)
-  const formRef = ref()
-  const form = reactive<any>({
-    id: undefined,
-@@FORM_MODEL@@  })
+  const dialogType = ref<DialogType>('add')
+  const currentRow = ref<Item | null>(null)
 
-  const loadList = async (): Promise<void> => {
-    loading.value = true
-    try {
-      const res = await fetchGet@@PASCAL@@List({
-        keyword: keyword.value || undefined,
-        pageNo: pageNo.value,
-        pageSize: pageSize.value
-      })
-      list.value = res?.list ?? []
-      total.value = res?.total ?? 0
-    } catch {
-      list.value = []
-      total.value = 0
-    } finally {
-      loading.value = false
+  const {
+    columns,
+    columnChecks,
+    data,
+    loading,
+    pagination,
+    searchParams,
+    getData,
+    resetSearchParams,
+    handleSizeChange,
+    handleCurrentChange,
+    refreshData
+  } = useTable({
+    core: {
+      apiFn: fetchGet@@PASCAL@@List,
+      apiParams: {
+        pageNo: 1,
+        pageSize: 20
+      },
+      columnsFactory: () => [
+@@TABLE_COLS@@
+        {
+          prop: 'operation',
+          label: '操作',
+          width: 130,
+          fixed: 'right',
+          formatter: (row: Item) =>
+            h('div', { class: 'flex items-center' }, [
+              h(
+                ElButton,
+                { link: true, type: 'primary', onClick: () => showDialog('edit', row) },
+                () => '编辑'
+              ),
+              h(
+                ElButton,
+                { link: true, type: 'danger', onClick: () => handleDelete(row) },
+                () => '删除'
+              )
+            ])
+        }
+      ]
     }
+  })
+
+  const handleSearch = (params: Api.@@NS@@.@@PASCAL@@SearchParams): void => {
+    Object.assign(searchForm.value, params)
+    Object.assign(searchParams, params)
+    getData()
   }
 
-  const handleSearch = (): void => {
-    pageNo.value = 1
-    loadList()
-  }
-
-  const showDialog = (row?: any): void => {
-    Object.assign(form, row ?? { id: undefined })
+  const showDialog = (type: DialogType, row?: Item): void => {
+    dialogType.value = type
+    currentRow.value = row ?? null
     dialogVisible.value = true
   }
 
-  const handleSubmit = async (): Promise<void> => {
-    submitting.value = true
-    try {
-      if (form.id) {
-        await fetchUpdate@@PASCAL@@(String(form.id), form)
-        ElMessage.success('保存成功')
-      } else {
-        await fetchCreate@@PASCAL@@(form)
-        ElMessage.success('新增成功')
-      }
-      dialogVisible.value = false
-      loadList()
-    } catch {
-      // 错误提示已由请求层统一弹出
-    } finally {
-      submitting.value = false
-    }
-  }
-
-  const handleDelete = async (row: any): Promise<void> => {
+  const handleDelete = async (row: Item): Promise<void> => {
     try {
       await ElMessageBox.confirm('确定删除这条记录？', '删除', {
         confirmButtonText: '删除',
@@ -1244,45 +1267,198 @@ func renderFrontendPage(in GeneratorInput, columns []ColumnInfo) string {
     }
 
     try {
-      await fetchDelete@@PASCAL@@(String(row.id))
+      await fetchDelete@@PASCAL@@(row.id)
       ElMessage.success('已删除')
-      loadList()
+      refreshData()
     } catch {
       // 错误提示已由请求层统一弹出
     }
   }
-
-  onMounted(loadList)
 </script>
-
-<style lang="scss" scoped>
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
-
-    .w-52 {
-      width: 208px;
-    }
-  }
-
-  .pager {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-  }
-</style>
 `
 
 	return replaceTokens(tpl, map[string]string{
 		"@@TABLE@@":      in.Table,
-		"@@NAME@@":       pascalToSnake(in.Pascal),
+		"@@NAME@@":       name,
 		"@@MODULE@@":     in.Module,
 		"@@PASCAL@@":     in.Pascal,
+		"@@NS@@":         pascalCase(in.Module),
 		"@@TABLE_COLS@@": strings.Join(tableCols, "\n"),
-		"@@FORM_ITEMS@@": strings.Join(formItems, "\n"),
-		"@@FORM_MODEL@@": strings.Join(formModel, "\n"),
+	})
+}
+
+// renderFrontendFormDialog 生成新增 / 编辑弹窗，与列表页分文件。
+// 入参 in 为生成参数、columns 为字段；返回组件内容。
+func renderFrontendFormDialog(in GeneratorInput, columns []ColumnInfo) string {
+	name := pascalToSnake(in.Pascal)
+
+	formItems := make([]string, 0, len(columns))
+	formModel := make([]string, 0, len(columns))
+	formAssign := make([]string, 0, len(columns))
+	ruleLines := make([]string, 0, len(columns))
+
+	for _, col := range editableColumns(columns) {
+		label := goDoc(col)
+
+		switch col.FormType {
+		case "number":
+			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
+        <ElInputNumber v-model="form.%s" :min="0" controls-position="right" class="w-full" />
+      </ElFormItem>`, label, col.JsonName, col.JsonName))
+			formModel = append(formModel, fmt.Sprintf("    %s: 0,", col.JsonName))
+			formAssign = append(formAssign, fmt.Sprintf("        %s: data?.%s ?? 0,", col.JsonName, col.JsonName))
+		case "switch":
+			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
+        <ElSwitch v-model="form.%s" :active-value="1" :inactive-value="0" />
+      </ElFormItem>`, label, col.JsonName, col.JsonName))
+			formModel = append(formModel, fmt.Sprintf("    %s: 1,", col.JsonName))
+			formAssign = append(formAssign, fmt.Sprintf("        %s: data?.%s ?? 1,", col.JsonName, col.JsonName))
+		case "textarea":
+			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
+        <ElInput v-model="form.%s" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" :maxlength="20000" />
+      </ElFormItem>`, label, col.JsonName, col.JsonName))
+			formModel = append(formModel, fmt.Sprintf("    %s: '',", col.JsonName))
+			formAssign = append(formAssign, fmt.Sprintf("        %s: data?.%s ?? '',", col.JsonName, col.JsonName))
+		case "datetime":
+			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
+        <ElDatePicker
+          v-model="form.%s"
+          type="datetime"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          placeholder="请选择%s"
+          class="w-full"
+        />
+      </ElFormItem>`, label, col.JsonName, col.JsonName, label))
+			formModel = append(formModel, fmt.Sprintf("    %s: '',", col.JsonName))
+			formAssign = append(formAssign, fmt.Sprintf("        %s: data?.%s ?? '',", col.JsonName, col.JsonName))
+		default:
+			formItems = append(formItems, fmt.Sprintf(`      <ElFormItem label="%s" prop="%s">
+        <ElInput v-model="form.%s" placeholder="请输入%s" maxlength="255" />
+      </ElFormItem>`, label, col.JsonName, col.JsonName, label))
+			formModel = append(formModel, fmt.Sprintf("    %s: '',", col.JsonName))
+			formAssign = append(formAssign, fmt.Sprintf("        %s: data?.%s ?? '',", col.JsonName, col.JsonName))
+		}
+
+		if !col.Nullable {
+			trigger := "blur"
+			if col.FormType == "number" || col.FormType == "switch" || col.FormType == "datetime" {
+				trigger = "change"
+			}
+			ruleLines = append(ruleLines, fmt.Sprintf("    %s: [{ required: true, message: '请填写%s', trigger: '%s' }],",
+				col.JsonName, label, trigger))
+		}
+	}
+
+	tpl := `<!-- @@TABLE@@ 表单弹窗：新增与编辑共用 -->
+<template>
+  <ElDialog
+    v-model="dialogVisible"
+    :title="isEdit ? '编辑' : '新增'"
+    width="560px"
+    align-center
+    :close-on-click-modal="false"
+  >
+    <ElForm ref="formRef" :model="form" :rules="rules" label-position="top">
+@@FORM_ITEMS@@
+    </ElForm>
+
+    <template #footer>
+      <ElButton @click="dialogVisible = false">取消</ElButton>
+      <ElButton type="primary" :loading="submitting" @click="handleSubmit">提交</ElButton>
+    </template>
+  </ElDialog>
+</template>
+
+<script setup lang="ts">
+  import type { FormInstance, FormRules } from 'element-plus'
+  import { ElMessage } from 'element-plus'
+  import { fetchCreate@@PASCAL@@, fetchUpdate@@PASCAL@@ } from '@/api/@@MODULE@@/@@NAME@@'
+
+  defineOptions({ name: '@@PASCAL@@FormDialog' })
+
+  type Item = Api.@@NS@@.@@PASCAL@@Item
+  type DialogType = 'add' | 'edit'
+
+  interface Props {
+    visible: boolean
+    type: DialogType
+    formData?: Item | null
+  }
+
+  const props = withDefaults(defineProps<Props>(), { formData: null })
+
+  const emit = defineEmits<{
+    (e: 'update:visible', value: boolean): void
+    (e: 'success'): void
+  }>()
+
+  const dialogVisible = computed({
+    get: () => props.visible,
+    set: (value: boolean) => emit('update:visible', value)
+  })
+
+  const isEdit = computed(() => props.type === 'edit')
+
+  const formRef = ref<FormInstance>()
+  const submitting = ref(false)
+
+  const form = reactive({
+@@FORM_MODEL@@  })
+
+  const rules: FormRules = {
+@@RULES@@  }
+
+  watch(
+    () => [props.visible, props.formData] as const,
+    ([visible]) => {
+      if (!visible) return
+
+      const data = props.formData
+      Object.assign(form, {
+@@FORM_ASSIGN@@      })
+
+      nextTick(() => formRef.value?.clearValidate())
+    },
+    { immediate: true }
+  )
+
+  const handleSubmit = async (): Promise<void> => {
+    if (!formRef.value) return
+
+    const valid = await formRef.value.validate().catch(() => false)
+    if (!valid) return
+
+    submitting.value = true
+    try {
+      if (isEdit.value && props.formData) {
+        await fetchUpdate@@PASCAL@@(props.formData.id, { ...form })
+        ElMessage.success('保存成功')
+      } else {
+        await fetchCreate@@PASCAL@@({ ...form })
+        ElMessage.success('新增成功')
+      }
+
+      dialogVisible.value = false
+      emit('success')
+    } catch {
+      // 错误提示已由请求层统一弹出
+    } finally {
+      submitting.value = false
+    }
+  }
+</script>
+`
+
+	return replaceTokens(tpl, map[string]string{
+		"@@TABLE@@":       in.Table,
+		"@@NAME@@":        name,
+		"@@MODULE@@":      in.Module,
+		"@@PASCAL@@":      in.Pascal,
+		"@@NS@@":          pascalCase(in.Module),
+		"@@FORM_ITEMS@@":  strings.Join(formItems, "\n"),
+		"@@FORM_MODEL@@":  strings.Join(formModel, "\n") + "\n",
+		"@@FORM_ASSIGN@@": strings.Join(formAssign, "\n") + "\n",
+		"@@RULES@@":       strings.Join(ruleLines, "\n") + "\n",
 	})
 }
 
