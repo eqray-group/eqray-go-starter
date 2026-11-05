@@ -457,9 +457,12 @@ _ = facades.Cache().Put("rbac:version", strconv.FormatInt(time.Now().UnixNano(),
     （请求体**不接受金额**），demo 已注册 `demo_order`；
   - `payService.RegisterOpenIDResolver(socialType, resolver)`：小程序 / JSAPI 取会员 openid，
     由 `bootstrap/app.go` 注入 `MemberSocialService.FindOpenIDByMember`。
-- **事件**：支付成功后派发 `pay.order.paid`（`pay/events`），退款成功派发 `pay.refund.succeeded`。
+- **事件**：支付成功后派发 `pay.order.paid`，退款成功派发 `pay.refund.succeeded`。
+  **事件契约放在 `app/events/<域>`**（当前 `app/events/pay`，包名 `payevents`），
+  只放 Event 键、Payload 与 Dispatch 入口，不放业务逻辑；发布方（pay）与消费方（如 demo）
+  都只依赖契约包，互不反向依赖实现模块。新增事件按域分文件，不要把所有事件塞进一个 `app/events` 平铺包。
   Goravel 1.18 的 `event.Event` 只要求 `Handle(args []Arg) ([]Arg, error)`，`Signature()` 是 `Listener` 的；
-  事件按**实例**查映射，所以事件键必须是零值结构体（`&OrderPaidEvent{}`），
+  事件按**实例**查映射，所以事件键必须是零值结构体（`OrderPaidEvent{}`，**不能传指针**），
   业务载荷序列化成 JSON 经 `event.Arg` 传递，监听器反序列化后处理。监听器必须幂等、不得 panic。
 - **状态机**：支付单 `0 待支付 / 10 支付中 / 20 已支付 / 30 已关闭`，退款单 `0 待退款 / 10 退款中 /
   20 已退款 / 30 退款失败`；所有流转走 `UpdateStatusCAS(... WhereIn("status", from))`，

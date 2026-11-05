@@ -1,4 +1,4 @@
-// Package listener 订阅 pay 模块派发的支付结果事件。
+// Package listener 订阅支付域事件（契约见 app/events/pay）。
 // 监听器必须幂等、不得 panic，重活异步化由业务侧自行安排。
 package listener
 
@@ -9,9 +9,9 @@ import (
 
 	"github.com/goravel/framework/contracts/event"
 
+	"eqray-go-starter/app/events/pay"
 	"eqray-go-starter/app/facades"
 	demoService "eqray-go-starter/app/modules/demo/service"
-	payEvents "eqray-go-starter/app/modules/pay/events"
 )
 
 // OrderPaidListener 订阅 pay.order.paid 事件，回写演示订单状态。
@@ -47,7 +47,7 @@ func (l *OrderPaidListener) Handle(args ...any) error {
 		return nil
 	}
 
-	var payload payEvents.OrderPaidPayload
+	var payload payevents.OrderPaidPayload
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		facades.Log().Errorf("演示订单监听器解析事件失败：%v", err)
 		return nil

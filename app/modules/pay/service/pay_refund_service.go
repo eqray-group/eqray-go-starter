@@ -7,13 +7,13 @@ import (
 
 	"github.com/goravel/framework/contracts/database/db"
 
+	"eqray-go-starter/app/events/pay"
 	"eqray-go-starter/app/facades"
 	baseErrs "eqray-go-starter/app/modules/base/errs"
 	"eqray-go-starter/app/modules/base/support"
 	"eqray-go-starter/app/modules/base/types"
 	payChannel "eqray-go-starter/app/modules/pay/channel"
 	payErrs "eqray-go-starter/app/modules/pay/errs"
-	payEvents "eqray-go-starter/app/modules/pay/events"
 	payModel "eqray-go-starter/app/modules/pay/model"
 	payRepository "eqray-go-starter/app/modules/pay/repository"
 )
@@ -272,7 +272,7 @@ func (s *PayRefundService) refundToWallet(ctx context.Context, order *payModel.P
 		return 0, err
 	}
 
-	payEvents.DispatchRefundSucceeded(&payEvents.RefundSucceededPayload{
+	payevents.DispatchRefundSucceeded(&payevents.RefundSucceededPayload{
 		BizType:     order.BizType,
 		BizOrderNo:  order.BizOrderNo,
 		OrderNo:     order.MerchantOrderNo,
@@ -323,7 +323,7 @@ func (s *PayRefundService) settleRefund(ctx context.Context, refund *payModel.Pa
 			return err
 		}
 
-		payEvents.DispatchRefundSucceeded(&payEvents.RefundSucceededPayload{
+		payevents.DispatchRefundSucceeded(&payevents.RefundSucceededPayload{
 			BizType:     order.BizType,
 			BizOrderNo:  order.BizOrderNo,
 			OrderNo:     order.MerchantOrderNo,

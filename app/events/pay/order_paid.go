@@ -1,6 +1,7 @@
-// Package events 定义 pay 模块对外派发的领域事件。
-// 业务模块只 import 本包定义事件与订阅监听器，不反向依赖 pay 的 service 层。
-package events
+// Package payevents 定义支付域的跨模块事件契约：事件键、业务载荷与派发入口。
+// 放在 app/events 下，任何模块都只依赖这里的事件类型，不反向依赖 pay 的 service 层。
+// 本包只放契约，不放业务逻辑；新增事件按域分文件，避免公共包变成杂物间。
+package payevents
 
 import (
 	"github.com/goravel/framework/contracts/event"

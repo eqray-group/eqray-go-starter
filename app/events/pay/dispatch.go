@@ -1,4 +1,4 @@
-package events
+package payevents
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 func dispatch(key event.Event, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {
-		facades.Log().Errorf("pay 事件载荷序列化失败：%v", err)
+		facades.Log().Errorf("支付事件载荷序列化失败：%v", err)
 		return
 	}
 
@@ -23,6 +23,6 @@ func dispatch(key event.Event, payload any) {
 	}).Dispatch()
 	if err != nil {
 		// 没有任何业务模块订阅时框架返回「未绑定」错误，属正常情况
-		facades.Log().Warningf("pay 事件派发未完成：%v", err)
+		facades.Log().Warningf("支付事件派发未完成：%v", err)
 	}
 }

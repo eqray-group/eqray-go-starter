@@ -12,6 +12,7 @@ import (
 
 	"github.com/goravel/framework/contracts/database/db"
 
+	"eqray-go-starter/app/events/pay"
 	"eqray-go-starter/app/facades"
 	baseErrs "eqray-go-starter/app/modules/base/errs"
 	"eqray-go-starter/app/modules/base/support"
@@ -19,7 +20,6 @@ import (
 	infraService "eqray-go-starter/app/modules/infra/service"
 	payChannel "eqray-go-starter/app/modules/pay/channel"
 	payErrs "eqray-go-starter/app/modules/pay/errs"
-	payEvents "eqray-go-starter/app/modules/pay/events"
 	payModel "eqray-go-starter/app/modules/pay/model"
 	payRepository "eqray-go-starter/app/modules/pay/repository"
 )
@@ -757,7 +757,7 @@ func (s *PayOrderService) dispatchPaid(order *payModel.PayOrderModel, paidAt str
 	}
 
 	facades.Log().Infof("支付成功：%s 业务单 %s 金额 %d 分", order.MerchantOrderNo, order.BizOrderNo, order.Price)
-	payEvents.DispatchOrderPaid(&payEvents.OrderPaidPayload{
+	payevents.DispatchOrderPaid(&payevents.OrderPaidPayload{
 		BizType:     order.BizType,
 		BizOrderNo:  order.BizOrderNo,
 		OrderNo:     order.MerchantOrderNo,
