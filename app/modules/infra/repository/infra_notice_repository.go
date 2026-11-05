@@ -76,7 +76,7 @@ func (r *InfraNoticeRepository) PaginateChannels(ctx context.Context, filter Not
 	}
 
 	if err := apply(facades.DB().WithContext(ctx).Table(model.InfraNoticeChannelTable)).
-		OrderBy("id desc").
+		OrderBy("id", "desc").
 		Offset(uint64((pageNo - 1) * pageSize)).
 		Limit(uint64(pageSize)).
 		Get(&list); err != nil {
@@ -172,7 +172,7 @@ func (r *InfraNoticeRepository) PaginateTemplates(ctx context.Context, filter No
 	}
 
 	if err := apply(facades.DB().WithContext(ctx).Table(model.InfraNoticeTemplateTable)).
-		OrderBy("id desc").
+		OrderBy("id", "desc").
 		Offset(uint64((pageNo - 1) * pageSize)).
 		Limit(uint64(pageSize)).
 		Get(&list); err != nil {
@@ -284,7 +284,7 @@ func (r *InfraNoticeRepository) PaginateLogs(ctx context.Context, filter NoticeL
 	}
 
 	if err := apply(facades.DB().WithContext(ctx).Table(model.InfraNoticeLogTable)).
-		OrderBy("created_at desc").
+		OrderBy("created_at", "desc").
 		Offset(uint64((pageNo - 1) * pageSize)).
 		Limit(uint64(pageSize)).
 		Get(&list); err != nil {

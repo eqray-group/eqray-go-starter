@@ -288,18 +288,18 @@ func (s *JobService) runJob(ctx context.Context, m *model.InfraJobModel, trigger
 	}
 
 	logModel := &model.InfraJobLogModel{
-		ID:         support.NewID(),
-		JobID:      m.ID,
-		JobName:    m.Name,
-		Handler:    m.Handler,
-		Trigger:    trigger,
-		Status:     status,
-		StartedAt:  types.DateTime(startedAt),
-		FinishedAt: types.DateTime(finishedAt),
-		Duration:   duration,
-		Output:     truncateOutput(output),
-		Error:      errText,
-		CreatedAt:  types.DateTime(finishedAt),
+		ID:          support.NewID(),
+		JobID:       m.ID,
+		JobName:     m.Name,
+		Handler:     m.Handler,
+		TriggerType: trigger,
+		Status:      status,
+		StartedAt:   types.DateTime(startedAt),
+		FinishedAt:  types.DateTime(finishedAt),
+		Duration:    duration,
+		Output:      truncateOutput(output),
+		Error:       errText,
+		CreatedAt:   types.DateTime(finishedAt),
 	}
 	if err := s.jobs.InsertLog(ctx, logModel); err != nil {
 		facades.Log().Errorf("[定时任务] 写执行日志失败：%v", err)

@@ -85,8 +85,8 @@ type InfraJobLogModel struct {
 	JobName string `db:"job_name" json:"jobName"`
 	// Handler 处理器标识
 	Handler string `db:"handler" json:"handler"`
-	// Trigger 触发方式：cron / manual
-	Trigger string `db:"trigger" json:"trigger"`
+	// TriggerType 触发方式：cron / manual（列名用 trigger_type，trigger 是 MySQL 保留字）
+	TriggerType string `db:"trigger_type" json:"triggerType"`
 	// Status 结果：0 失败 / 1 成功
 	Status int8 `db:"status" json:"status"`
 	// StartedAt 开始时间

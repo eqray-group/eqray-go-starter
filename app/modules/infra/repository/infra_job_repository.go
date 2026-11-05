@@ -64,7 +64,7 @@ func (r *InfraJobRepository) PaginateJobs(ctx context.Context, filter JobFilter,
 	}
 
 	if err := r.applyJobFilter(facades.DB().WithContext(ctx).Table(model.InfraJobTable), filter).
-		OrderBy("status desc").
+		OrderBy("status", "desc").
 		OrderBy("id").
 		Offset(uint64((pageNo - 1) * pageSize)).
 		Limit(uint64(pageSize)).
@@ -165,18 +165,18 @@ func (r *InfraJobRepository) ListEnabled(ctx context.Context) ([]model.InfraJobM
 // 入参 m 为日志模型；返回写库错误。
 func (r *InfraJobRepository) InsertLog(ctx context.Context, m *model.InfraJobLogModel) error {
 	_, err := facades.DB().WithContext(ctx).Table(model.InfraJobLogTable).Insert(map[string]any{
-		"id":          m.ID,
-		"job_id":      m.JobID,
-		"job_name":    m.JobName,
-		"handler":     m.Handler,
-		"trigger":     m.Trigger,
-		"status":      m.Status,
-		"started_at":  m.StartedAt,
-		"finished_at": m.FinishedAt,
-		"duration":    m.Duration,
-		"output":      m.Output,
-		"error":       m.Error,
-		"created_at":  m.CreatedAt,
+		"id":           m.ID,
+		"job_id":       m.JobID,
+		"job_name":     m.JobName,
+		"handler":      m.Handler,
+		"trigger_type": m.TriggerType,
+		"status":       m.Status,
+		"started_at":   m.StartedAt,
+		"finished_at":  m.FinishedAt,
+		"duration":     m.Duration,
+		"output":       m.Output,
+		"error":        m.Error,
+		"created_at":   m.CreatedAt,
 	})
 
 	return err
@@ -207,7 +207,7 @@ func (r *InfraJobRepository) PaginateLogs(ctx context.Context, filter JobLogFilt
 	}
 
 	if err := apply(facades.DB().WithContext(ctx).Table(model.InfraJobLogTable)).
-		OrderBy("started_at desc").
+		OrderBy("started_at", "desc").
 		Offset(uint64((pageNo - 1) * pageSize)).
 		Limit(uint64(pageSize)).
 		Get(&list); err != nil {

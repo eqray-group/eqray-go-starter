@@ -388,7 +388,7 @@ declare namespace Api {
       jobName: string
       handler: string
       /** cron / manual */
-      trigger: string
+      triggerType: string
       /** 0 失败 / 1 成功 */
       status: number
       startedAt: string

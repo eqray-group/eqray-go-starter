@@ -48,7 +48,7 @@ CREATE TABLE infra_job_log (
   job_id      bigint      NOT NULL COMMENT '任务 ID',
   job_name    varchar(64) NOT NULL COMMENT '任务名称（冗余，删任务后仍可查）',
   handler     varchar(64) NOT NULL COMMENT '处理器标识',
-  trigger     varchar(16) NOT NULL DEFAULT 'cron' COMMENT '触发方式：cron / manual',
+  trigger_type varchar(16) NOT NULL DEFAULT 'cron' COMMENT '触发方式：cron / manual',
   status      tinyint     NOT NULL DEFAULT 1 COMMENT '结果：0 失败 / 1 成功',
   started_at  datetime    DEFAULT NULL COMMENT '开始时间',
   finished_at datetime    DEFAULT NULL COMMENT '结束时间',

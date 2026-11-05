@@ -216,7 +216,7 @@ func (s *MonitorService) recentErrors(ctx context.Context) []MonitorErrorItem {
 
 	rows := make([]model.InfraApiErrorLogModel, 0, 10)
 	if err := facades.DB().WithContext(ctx).Table(model.InfraApiErrorLogTable).
-		OrderBy("created_at desc").
+		OrderBy("created_at", "desc").
 		Limit(10).
 		Get(&rows); err != nil {
 		return items

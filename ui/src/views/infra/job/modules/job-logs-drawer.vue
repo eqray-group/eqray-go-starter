@@ -34,8 +34,8 @@
       <ElTableColumn prop="startedAt" label="开始时间" width="165" />
       <ElTableColumn label="触发" width="80">
         <template #default="{ row }">
-          <ElTag :type="row.trigger === 'manual' ? 'warning' : 'info'" size="small">
-            {{ row.trigger === 'manual' ? '手动' : '调度' }}
+          <ElTag :type="row.triggerType === 'manual' ? 'warning' : 'info'" size="small">
+            {{ row.triggerType === 'manual' ? '手动' : '调度' }}
           </ElTag>
         </template>
       </ElTableColumn>
